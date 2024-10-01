@@ -67,7 +67,7 @@ unique_ptr<PhysicalOperator> PhysicalPlanGenerator::CreatePlan(unique_ptr<Logica
 unique_ptr<PhysicalOperator> PhysicalPlanGenerator::CreatePlan(LogicalOperator &op) {
 	op.estimated_cardinality = op.EstimateCardinality(context);
 	unique_ptr<PhysicalOperator> plan = nullptr;
-
+	std::cout << LogicalOperatorToString(op.type) << std::endl;
 	switch (op.type) {
 	case LogicalOperatorType::LOGICAL_GET:
 		plan = CreatePlan(op.Cast<LogicalGet>());
@@ -109,11 +109,13 @@ unique_ptr<PhysicalOperator> PhysicalPlanGenerator::CreatePlan(LogicalOperator &
 		plan = CreatePlan(op.Cast<LogicalDummyScan>());
 		break;
 	case LogicalOperatorType::LOGICAL_ANY_JOIN:
+		std::cout << "Inside logical any join\n";
 		plan = CreatePlan(op.Cast<LogicalAnyJoin>());
 		break;
 	case LogicalOperatorType::LOGICAL_ASOF_JOIN:
 	case LogicalOperatorType::LOGICAL_DELIM_JOIN:
 	case LogicalOperatorType::LOGICAL_COMPARISON_JOIN:
+		std::cout << "Inside logical comparision join\n";
 		plan = CreatePlan(op.Cast<LogicalComparisonJoin>());
 		break;
 	case LogicalOperatorType::LOGICAL_CROSS_PRODUCT:
