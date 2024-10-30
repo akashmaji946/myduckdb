@@ -577,7 +577,8 @@
      NULLS_LA = 758,
      WITH_LA = 759,
      POSTFIXOP = 760,
-     UMINUS = 761
+     UMINUS = 761,
+     AUJ = 946
    };
 #endif
 /* Tokens.  */
@@ -1085,7 +1086,7 @@
 #define WITH_LA 759
 #define POSTFIXOP 760
 #define UMINUS 761
-
+#define AUJ 946
 
 
 
@@ -25581,7 +25582,7 @@ yyreduce:
     {
 					PGJoinExpr *n = makeNode(PGJoinExpr);
 					n->jointype = (yyvsp[(3) - (5)].jtype);
-					n->joinreftype = PG_JOIN_NATURAL;
+					n->joinreftype = PG_JOIN_REGULAR;
 					n->larg = (yyvsp[(1) - (5)].node);
 					n->rarg = (yyvsp[(5) - (5)].node);
 					n->usingClause = NIL; /* figure out which columns later... */

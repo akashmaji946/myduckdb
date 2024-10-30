@@ -17,7 +17,7 @@ PhysicalAmUsJoin::PhysicalAmUsJoin(LogicalOperator &op, unique_ptr<PhysicalOpera
                              estimated_cardinality) {
 	children.push_back(std::move(left));
 	children.push_back(std::move(right));
-	std::cout << "Yaha shi aa gya hu\n";
+	std::cout << "Yaha shi se aa gya hu\n";
 }
 
 bool PhysicalJoin::HasNullValues_(DataChunk &chunk) {
@@ -390,7 +390,8 @@ OperatorResultType PhysicalAmUsJoin::ResolveComplexJoin(ExecutionContext &contex
 		left_chunk.Verify();
 		right_condition.Verify();
 		right_payload.Verify();
-
+		std::cout << "LEFT:\n"<< left_chunk.ToString() << std::endl;
+		std::cout << "RIGHT:\n"<< right_payload.ToString() << std::endl;
 		// now perform the join
 		SelectionVector lvector(STANDARD_VECTOR_SIZE), rvector(STANDARD_VECTOR_SIZE);
 		match_count = AmUsJoinInner::Perform(state.left_tuple, state.right_tuple, state.left_condition,
@@ -407,6 +408,8 @@ OperatorResultType PhysicalAmUsJoin::ResolveComplexJoin(ExecutionContext &contex
 		}
 
 		std::cout << "In here: AULJ\n";
+		std::cout << "INPUT:" << input.ToString() << std::endl;
+		std::cout << "OUTPUT:" << chunk.ToString() << std::endl;
 
 		// check if we exhausted the RHS, if we did we need to move to the next right chunk in the next iteration
 		if (state.right_tuple >= right_condition.size()) {

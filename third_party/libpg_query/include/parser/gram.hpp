@@ -542,7 +542,8 @@
      NULLS_LA = 758,
      WITH_LA = 759,
      POSTFIXOP = 760,
-     UMINUS = 761
+     UMINUS = 761,
+     AUJ = 946
    };
 #endif
 /* Tokens.  */
@@ -1050,7 +1051,7 @@
 #define WITH_LA 759
 #define POSTFIXOP 760
 #define UMINUS 761
-
+#define AUJ 946
 
 
 

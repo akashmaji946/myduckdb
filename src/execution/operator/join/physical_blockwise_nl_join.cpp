@@ -7,7 +7,7 @@
 #include "duckdb/execution/operator/join/physical_comparison_join.hpp"
 #include "duckdb/execution/operator/join/physical_cross_product.hpp"
 #include "duckdb/common/enum_util.hpp"
-
+#include <iostream>
 namespace duckdb {
 
 PhysicalBlockwiseNLJoin::PhysicalBlockwiseNLJoin(LogicalOperator &op, unique_ptr<PhysicalOperator> left,
@@ -110,98 +110,210 @@ unique_ptr<OperatorState> PhysicalBlockwiseNLJoin::GetOperatorState(ExecutionCon
 	return std::move(result);
 }
 
+// OperatorResultType PhysicalBlockwiseNLJoin::ExecuteInternal(ExecutionContext &context, DataChunk &input,
+//                                                             DataChunk &chunk, GlobalOperatorState &gstate_p,
+//                                                             OperatorState &state_p) const {
+// 	D_ASSERT(input.size() > 0);
+// 	auto &state = state_p.Cast<BlockwiseNLJoinState>();
+// 	auto &gstate = sink_state->Cast<BlockwiseNLJoinGlobalState>();
+
+// 	if (gstate.right_chunks.Count() == 0) {
+// 		// empty RHS
+// 		if (!EmptyResultIfRHSIsEmpty()) {
+// 			PhysicalComparisonJoin::ConstructEmptyJoinResult(join_type, false, input, chunk);
+// 			return OperatorResultType::NEED_MORE_INPUT;
+// 		} else {
+// 			return OperatorResultType::FINISHED;
+// 		}
+// 	}
+
+// 	DataChunk *intermediate_chunk = &chunk;
+// 	if (join_type == JoinType::SEMI || join_type == JoinType::ANTI) {
+// 		intermediate_chunk = &state.intermediate_chunk;
+// 		intermediate_chunk->Reset();
+// 	}
+
+// 	// now perform the actual join
+// 	// we perform a cross product, then execute the expression directly on the cross product result
+// 	idx_t result_count = 0;
+// 	bool found_match[STANDARD_VECTOR_SIZE] = {false};
+
+// 	do {
+// 		auto result = state.cross_product.Execute(input, *intermediate_chunk);
+// 		if (result == OperatorResultType::NEED_MORE_INPUT) {
+// 			// exhausted input, have to pull new LHS chunk
+// 			if (state.left_outer.Enabled()) {
+// 				// left join: before we move to the next chunk, see if we need to output any vectors that didn't
+// 				// have a match found
+// 				state.left_outer.ConstructLeftJoinResult(input, *intermediate_chunk);
+// 				state.left_outer.Reset();
+// 			}
+
+// 			if (join_type == JoinType::SEMI) {
+// 				PhysicalJoin::ConstructSemiJoinResult(input, chunk, found_match);
+// 			}
+// 			if (join_type == JoinType::ANTI) {
+// 				PhysicalJoin::ConstructAntiJoinResult(input, chunk, found_match);
+// 			}
+
+// 			return OperatorResultType::NEED_MORE_INPUT;
+// 		}
+
+// 		// now perform the computation
+// 		result_count = state.executor.SelectExpression(*intermediate_chunk, state.match_sel);
+
+// 		// handle anti and semi joins with different logic
+// 		if (result_count > 0) {
+// 			// found a match!
+// 			// handle anti semi join conditions first
+// 			if (join_type == JoinType::ANTI || join_type == JoinType::SEMI) {
+// 				if (state.cross_product.ScanLHS()) {
+// 					found_match[state.cross_product.PositionInChunk()] = true;
+// 				} else {
+// 					for (idx_t i = 0; i < result_count; i++) {
+// 						found_match[state.match_sel.get_index(i)] = true;
+// 					}
+// 				}
+// 				intermediate_chunk->Reset();
+// 				// trick the loop to continue as semi and anti joins will never produce more output than
+// 				// the LHS cardinality
+// 				result_count = 0;
+// 			} else {
+// 				// check if the cross product is scanning the LHS or the RHS in its entirety
+// 				if (!state.cross_product.ScanLHS()) {
+// 					// set the match flags in the LHS
+// 					state.left_outer.SetMatches(state.match_sel, result_count);
+// 					// set the match flag in the RHS
+// 					gstate.right_outer.SetMatch(state.cross_product.ScanPosition() +
+// 					                            state.cross_product.PositionInChunk());
+// 				} else {
+// 					// set the match flag in the LHS
+// 					state.left_outer.SetMatch(state.cross_product.PositionInChunk());
+// 					// set the match flags in the RHS
+// 					gstate.right_outer.SetMatches(state.match_sel, result_count, state.cross_product.ScanPosition());
+// 				}
+// 				intermediate_chunk->Slice(state.match_sel, result_count);
+// 			}
+// 		} else {
+// 			// no result: reset the chunk
+// 			intermediate_chunk->Reset();
+// 		}
+// 	} while (result_count == 0);
+
+// 	return OperatorResultType::HAVE_MORE_OUTPUT;
+// }
+
 OperatorResultType PhysicalBlockwiseNLJoin::ExecuteInternal(ExecutionContext &context, DataChunk &input,
                                                             DataChunk &chunk, GlobalOperatorState &gstate_p,
                                                             OperatorState &state_p) const {
-	D_ASSERT(input.size() > 0);
-	auto &state = state_p.Cast<BlockwiseNLJoinState>();
-	auto &gstate = sink_state->Cast<BlockwiseNLJoinGlobalState>();
+    auto &state = state_p.Cast<BlockwiseNLJoinState>();
+    auto &gstate = sink_state->Cast<BlockwiseNLJoinGlobalState>();
 
-	if (gstate.right_chunks.Count() == 0) {
-		// empty RHS
-		if (!EmptyResultIfRHSIsEmpty()) {
-			PhysicalComparisonJoin::ConstructEmptyJoinResult(join_type, false, input, chunk);
-			return OperatorResultType::NEED_MORE_INPUT;
-		} else {
-			return OperatorResultType::FINISHED;
-		}
+    if (gstate.right_chunks.Count() == 0) {
+        // Handle empty RHS case
+        if (!EmptyResultIfRHSIsEmpty()) {
+            PhysicalComparisonJoin::ConstructEmptyJoinResult(join_type, false, input, chunk);
+            return OperatorResultType::NEED_MORE_INPUT;
+        } else {
+            return OperatorResultType::FINISHED;
+        }
+    }
+
+	vector<LogicalType> combined_types;
+	// Add LHS types
+	for (const auto &type : children[0]->types) {
+		combined_types.push_back(type);
+	}
+	// Add RHS types
+	for (const auto &type : children[1]->types) {
+		combined_types.push_back(type);
 	}
 
-	DataChunk *intermediate_chunk = &chunk;
-	if (join_type == JoinType::SEMI || join_type == JoinType::ANTI) {
-		intermediate_chunk = &state.intermediate_chunk;
-		intermediate_chunk->Reset();
-	}
 
-	// now perform the actual join
-	// we perform a cross product, then execute the expression directly on the cross product result
-	idx_t result_count = 0;
-	bool found_match[STANDARD_VECTOR_SIZE] = {false};
+    idx_t result_count = 0;
+    bool found_match[STANDARD_VECTOR_SIZE] = {false};
+    DataChunk *intermediate_chunk = &chunk;
+    // intermediate_chunk->Initialize(Allocator::DefaultAllocator(), combined_types); // Initialize based on expected schema
 
-	do {
-		auto result = state.cross_product.Execute(input, *intermediate_chunk);
-		if (result == OperatorResultType::NEED_MORE_INPUT) {
-			// exhausted input, have to pull new LHS chunk
-			if (state.left_outer.Enabled()) {
-				// left join: before we move to the next chunk, see if we need to output any vectors that didn't
-				// have a match found
-				state.left_outer.ConstructLeftJoinResult(input, *intermediate_chunk);
-				state.left_outer.Reset();
-			}
+    // Loop through RHS chunks in reverse order
+	std :: cout << "Counter Size NLJ:" << gstate.right_chunks.Count() << std::endl;
+    for (idx_t chunk_idx = gstate.right_chunks.ChunkCount(); chunk_idx > 0; chunk_idx--) {
+		std::cout << "===================Loop Backwards=======================\n";
+        DataChunk rhs_chunk;
+        gstate.right_chunks.FetchChunk(chunk_idx - 1, rhs_chunk); // Fetch chunk in reverse order
 
-			if (join_type == JoinType::SEMI) {
-				PhysicalJoin::ConstructSemiJoinResult(input, chunk, found_match);
-			}
-			if (join_type == JoinType::ANTI) {
-				PhysicalJoin::ConstructAntiJoinResult(input, chunk, found_match);
-			}
+        // Set the current RHS chunk for the cross product
+        state.cross_product.SetRightChunk(rhs_chunk);
 
-			return OperatorResultType::NEED_MORE_INPUT;
-		}
+        // Perform the cross product for this RHS chunk
+        auto result = state.cross_product.Execute(input, *intermediate_chunk);
+        if (result == OperatorResultType::NEED_MORE_INPUT) {
+            // Handle left outer joins, semi/anti join, etc.
+            return OperatorResultType::NEED_MORE_INPUT;
+        }
 
-		// now perform the computation
-		result_count = state.executor.SelectExpression(*intermediate_chunk, state.match_sel);
+        // Evaluate join condition and process result
+        result_count = state.executor.SelectExpression(*intermediate_chunk, state.match_sel);
+        if (result_count > 0) {
+            // Determine if we are scanning the LHS or RHS in the cross product
+            bool scanning_lhs = state.cross_product.ScanLHS();
 
-		// handle anti and semi joins with different logic
-		if (result_count > 0) {
-			// found a match!
-			// handle anti semi join conditions first
-			if (join_type == JoinType::ANTI || join_type == JoinType::SEMI) {
-				if (state.cross_product.ScanLHS()) {
-					found_match[state.cross_product.PositionInChunk()] = true;
-				} else {
-					for (idx_t i = 0; i < result_count; i++) {
-						found_match[state.match_sel.get_index(i)] = true;
-					}
-				}
-				intermediate_chunk->Reset();
-				// trick the loop to continue as semi and anti joins will never produce more output than
-				// the LHS cardinality
-				result_count = 0;
-			} else {
-				// check if the cross product is scanning the LHS or the RHS in its entirety
-				if (!state.cross_product.ScanLHS()) {
-					// set the match flags in the LHS
-					state.left_outer.SetMatches(state.match_sel, result_count);
-					// set the match flag in the RHS
-					gstate.right_outer.SetMatch(state.cross_product.ScanPosition() +
-					                            state.cross_product.PositionInChunk());
-				} else {
-					// set the match flag in the LHS
-					state.left_outer.SetMatch(state.cross_product.PositionInChunk());
-					// set the match flags in the RHS
-					gstate.right_outer.SetMatches(state.match_sel, result_count, state.cross_product.ScanPosition());
-				}
-				intermediate_chunk->Slice(state.match_sel, result_count);
-			}
-		} else {
-			// no result: reset the chunk
-			intermediate_chunk->Reset();
-		}
-	} while (result_count == 0);
+            // Set match flags based on the scanning direction
+            if (scanning_lhs) {
+                state.left_outer.SetMatch(state.cross_product.PositionInChunk());
+                gstate.right_outer.SetMatches(state.match_sel, result_count, state.cross_product.ScanPosition());
+            } else {
+                gstate.right_outer.SetMatch(state.cross_product.ScanPosition() + state.cross_product.PositionInChunk());
+                state.left_outer.SetMatches(state.match_sel, result_count);
+            }
 
-	return OperatorResultType::HAVE_MORE_OUTPUT;
+            // Slice the intermediate chunk based on matched selection vector
+            intermediate_chunk->Slice(state.match_sel, result_count);
+
+            // Prepare the output chunk with the matched results
+            if (join_type == JoinType::INNER || join_type == JoinType::LEFT || join_type == JoinType::RIGHT) {
+                // Populate the output chunk with selected data from both LHS and RHS
+                // chunk.Reference(intermediate_chunk);
+            }
+
+            // Handle SEMI joins
+            if (join_type == JoinType::SEMI) {
+                PhysicalJoin::ConstructSemiJoinResult(input, chunk, found_match);
+            }
+
+            // Handle ANTI joins
+            if (join_type == JoinType::ANTI) {
+                PhysicalJoin::ConstructAntiJoinResult(input, chunk, found_match);
+            }
+
+            // Additional handling for FULL OUTER joins
+            if (join_type == JoinType::OUTER) {
+                // Collect unmatched rows from LHS and RHS to append to output chunk
+                // auto unmatched_lhs = state.left_outer.CollectUnmatchedRows(input);
+                // for (const auto &row : unmatched_lhs) {
+                //     DataChunk unmatched_row_chunk;
+                //     unmatched_row_chunk.Initialize(Allocator::DefaultAllocator(), chunk.GetTypes());
+                //     unmatched_row_chunk.SetRow(0, row); // Fill in unmatched LHS row
+                //     unmatched_row_chunk.SetNullsForRHSColumns(); // Set NULLs for RHS columns
+                //     chunk.Append(unmatched_row_chunk); // Append to output
+                // }
+
+                // auto unmatched_rhs = gstate.right_outer.CollectUnmatchedRows(chunk);
+                // for (const auto &row : unmatched_rhs) {
+                //     DataChunk unmatched_row_chunk;
+                //     unmatched_row_chunk.Initialize(Allocator::DefaultAllocator(), chunk.GetTypes());
+                //     unmatched_row_chunk.SetNullsForLHSColumns(); // Set NULLs for LHS columns
+                //     unmatched_row_chunk.SetRow(0, row); // Fill in unmatched RHS row
+                //     chunk.Append(unmatched_row_chunk); // Append to output
+                // }
+            }
+        }
+    }
+
+    return OperatorResultType::FINISHED; // Indicate that processing is complete
 }
+
+
 
 InsertionOrderPreservingMap<string> PhysicalBlockwiseNLJoin::ParamsToString() const {
 	InsertionOrderPreservingMap<string> result;

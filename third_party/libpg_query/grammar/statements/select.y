@@ -1254,6 +1254,21 @@ joined_table:
 					n->location = @2;
 					$$ = n;
 				}
+			| table_ref AUJ table_ref join_qual
+				{
+					/* letting join_type reduce to empty doesn't work */
+					PGJoinExpr *n = makeNode(PGJoinExpr);
+					n->jointype = PG_JOIN_INNER;
+					n->joinreftype = PG_JOIN_REGULAR;
+					n->larg = $1;
+					n->rarg = $3;
+					if ($4 != NULL && IsA($4, PGList))
+						n->usingClause = (PGList *) $4; /* USING clause */
+					else
+						n->quals = $4; /* ON clause */
+					n->location = @2;
+					$$ = n;
+				}
 			| table_ref NATURAL join_type JOIN table_ref
 				{
 					PGJoinExpr *n = makeNode(PGJoinExpr);

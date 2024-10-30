@@ -231,7 +231,7 @@ static duckdb::unique_ptr<SQLAutoCompleteFunctionData> GenerateSuggestions(Clien
 	SuggestionState suggest_state = SuggestionState::SUGGEST_KEYWORD;
 	case_insensitive_set_t column_name_keywords = {"SELECT", "WHERE", "BY",    "HAVING", "QUALIFY",
 	                                               "LIMIT",  "SET",   "USING", "ON"};
-	case_insensitive_set_t table_name_keywords = {"FROM",  "JOIN", "INSERT", "UPDATE",  "DELETE",
+	case_insensitive_set_t table_name_keywords = {"FROM",  "JOIN", "AUJ", "INSERT", "UPDATE",  "DELETE",
 	                                              "ALTER", "DROP", "CALL",   "DESCRIBE"};
 	case_insensitive_map_t<unordered_set<string>> next_keyword_map;
 	next_keyword_map["SELECT"] = {"FROM",    "WHERE",  "GROUP",  "HAVING", "WINDOW", "ORDER",     "LIMIT",

@@ -89,6 +89,15 @@ private:
 	bool initialized;
 	bool finished;
 	bool scan_input_chunk;
+
+
+	DataChunk rhs_chunk;
+public:
+    // Method to set the RHS chunk for the cross product
+    void SetRightChunk(DataChunk &chunk) {
+        // Store the given chunk as the current right-hand side (RHS) chunk
+        scan_chunk.Reference(chunk);
+    }
 };
 
 } // namespace duckdb
