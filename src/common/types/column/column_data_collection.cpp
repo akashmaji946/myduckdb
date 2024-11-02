@@ -991,7 +991,7 @@ idx_t ColumnDataCollection::ChunkCount() const {
 
 void ColumnDataCollection::FetchChunk(idx_t chunk_idx, DataChunk &result) const {
 	D_ASSERT(chunk_idx < ChunkCount());
-	std::cout << "ChunkCount:" << ChunkCount() << std::endl;
+	std::cout << "ChunkIndex:ChunkCount:" << chunk_idx << ":" << ChunkCount() << std::endl;
 	for (auto &segment : segments) {
 		if (chunk_idx >= segment->ChunkCount()) {
 			chunk_idx -= segment->ChunkCount();

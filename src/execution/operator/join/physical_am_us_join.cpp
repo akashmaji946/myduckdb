@@ -339,6 +339,9 @@ OperatorResultType PhysicalAmUsJoin::ResolveComplexJoin(ExecutionContext &contex
 	auto &state = state_p.Cast<PhysicalAmUsJoinState>();
 	auto &gstate = sink_state->Cast<AmUsJoinGlobalState>();
 
+	// std::cout << "INPUT:" << input.ToString() << std::endl;
+	// std::cout << "OUTPUT:" << chunk.ToString() << std::endl;
+	std::cout << "l:r => " << state.fetch_next_left << ":" << state.fetch_next_right << std::endl;
 	idx_t match_count;
 	do {
 		if (state.fetch_next_right) {
@@ -385,7 +388,7 @@ OperatorResultType PhysicalAmUsJoin::ResolveComplexJoin(ExecutionContext &contex
 		auto &left_chunk = input;
 		auto &right_condition = state.right_condition;
 		auto &right_payload = state.right_payload;
-
+		
 		// sanity check
 		left_chunk.Verify();
 		right_condition.Verify();
@@ -408,8 +411,7 @@ OperatorResultType PhysicalAmUsJoin::ResolveComplexJoin(ExecutionContext &contex
 		}
 
 		std::cout << "In here: AULJ\n";
-		std::cout << "INPUT:" << input.ToString() << std::endl;
-		std::cout << "OUTPUT:" << chunk.ToString() << std::endl;
+		
 
 		// check if we exhausted the RHS, if we did we need to move to the next right chunk in the next iteration
 		if (state.right_tuple >= right_condition.size()) {
