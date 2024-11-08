@@ -2,11 +2,16 @@
 #include "duckdb/execution/physical_plan_generator.hpp"
 #include "duckdb/planner/operator/logical_projection.hpp"
 #include "duckdb/planner/expression/bound_reference_expression.hpp"
-
+#include<iostream>
 namespace duckdb {
 
 unique_ptr<PhysicalOperator> PhysicalPlanGenerator::CreatePlan(LogicalProjection &op) {
 	D_ASSERT(op.children.size() == 1);
+	std::cout << "=======================Showing children for " << op.GetName() << std::endl;
+	for(auto &child:  op.children){
+			std::cout << child->GetName () << std::endl;
+	}
+	std::cout << "=======================\n";
 	auto plan = CreatePlan(*op.children[0]);
 
 #ifdef DEBUG

@@ -51,22 +51,30 @@ unique_ptr<PhysicalOperator> PhysicalPlanGenerator::CreatePlan(unique_ptr<Logica
 	op->ResolveOperatorTypes();
 	profiler.EndPhase();
 
-	// extract dependencies from the logical plan
+	//////////////////PRINT
+	for(auto &child:  op->children){
+			std::cout << "Child=>" << child->GetName () << std::endl;
+	}
+
+	// extract depfor()endencies from the logical plan
 	DependencyExtractor extractor(dependencies);
 	extractor.VisitOperator(*op);
 
 	// then create the main physical plan
+	std::cout << "Creating phy plan for " << op->GetName() << "\n";
+	// op->GetName();
 	profiler.StartPhase(MetricsType::PHYSICAL_PLANNER_CREATE_PLAN);
 	auto plan = CreatePlan(*op);
 	profiler.EndPhase();
 
 	plan->Verify();
 	return plan;
-}
+}																										
 
 unique_ptr<PhysicalOperator> PhysicalPlanGenerator::CreatePlan(LogicalOperator &op) {
 	op.estimated_cardinality = op.EstimateCardinality(context);
 	unique_ptr<PhysicalOperator> plan = nullptr;
+	std::cout << "Inside Create Plan: ";
 	std::cout << LogicalOperatorToString(op.type) << std::endl;
 	switch (op.type) {
 	case LogicalOperatorType::LOGICAL_GET:
@@ -82,6 +90,7 @@ unique_ptr<PhysicalOperator> PhysicalPlanGenerator::CreatePlan(LogicalOperator &
 		plan = CreatePlan(op.Cast<LogicalFilter>());
 		break;
 	case LogicalOperatorType::LOGICAL_AGGREGATE_AND_GROUP_BY:
+		std::cout << "===========logagg================\n";
 		plan = CreatePlan(op.Cast<LogicalAggregate>());
 		break;
 	case LogicalOperatorType::LOGICAL_WINDOW:
@@ -109,13 +118,13 @@ unique_ptr<PhysicalOperator> PhysicalPlanGenerator::CreatePlan(LogicalOperator &
 		plan = CreatePlan(op.Cast<LogicalDummyScan>());
 		break;
 	case LogicalOperatorType::LOGICAL_ANY_JOIN:
-		std::cout << "Inside logical any join\n";
+		
 		plan = CreatePlan(op.Cast<LogicalAnyJoin>());
 		break;
 	case LogicalOperatorType::LOGICAL_ASOF_JOIN:
 	case LogicalOperatorType::LOGICAL_DELIM_JOIN:
 	case LogicalOperatorType::LOGICAL_COMPARISON_JOIN:
-		std::cout << "Inside logical comparision join\n";
+		std::cout << "===========logcomp================\n";
 		plan = CreatePlan(op.Cast<LogicalComparisonJoin>());
 		break;
 	case LogicalOperatorType::LOGICAL_CROSS_PRODUCT:

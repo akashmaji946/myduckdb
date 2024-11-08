@@ -70,6 +70,7 @@ void LogicalOperatorVisitor::EnumerateExpressions(LogicalOperator &op,
 	case LogicalOperatorType::LOGICAL_DELIM_JOIN:
 	case LogicalOperatorType::LOGICAL_DEPENDENT_JOIN:
 	case LogicalOperatorType::LOGICAL_COMPARISON_JOIN: {
+		std::cout << "comp opr detected...." << op.GetName() << "\n";
 		auto &join = op.Cast<LogicalComparisonJoin>();
 		for (auto &expr : join.duplicate_eliminated_columns) {
 			callback(&expr);
@@ -96,6 +97,7 @@ void LogicalOperatorVisitor::EnumerateExpressions(LogicalOperator &op,
 		break;
 	}
 	case LogicalOperatorType::LOGICAL_AGGREGATE_AND_GROUP_BY: {
+		std::cout << "groupby opr detected...." << op.GetName() << "\n";
 		auto &aggr = op.Cast<LogicalAggregate>();
 		for (auto &group : aggr.groups) {
 			callback(&group);

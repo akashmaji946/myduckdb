@@ -4,7 +4,7 @@
 #include "duckdb/planner/expression/bound_aggregate_expression.hpp"
 #include "duckdb/planner/expression/bound_reference_expression.hpp"
 #include "duckdb/storage/buffer_manager.hpp"
-
+#include <iostream>
 namespace duckdb {
 
 PhysicalPerfectHashAggregate::PhysicalPerfectHashAggregate(ClientContext &context, vector<LogicalType> types_p,
@@ -119,7 +119,7 @@ SinkResultType PhysicalPerfectHashAggregate::Sink(ExecutionContext &context, Dat
 	auto &lstate = input.local_state.Cast<PerfectHashAggregateLocalState>();
 	DataChunk &group_chunk = lstate.group_chunk;
 	DataChunk &aggregate_input_chunk = lstate.aggregate_input_chunk;
-
+	std::cout << "Agg:\n"<< aggregate_input_chunk.ToString() << std::endl;
 	for (idx_t group_idx = 0; group_idx < groups.size(); group_idx++) {
 		auto &group = groups[group_idx];
 		D_ASSERT(group->type == ExpressionType::BOUND_REF);
@@ -152,7 +152,9 @@ SinkResultType PhysicalPerfectHashAggregate::Sink(ExecutionContext &context, Dat
 	aggregate_input_chunk.Verify();
 	D_ASSERT(aggregate_input_chunk.ColumnCount() == 0 || group_chunk.size() == aggregate_input_chunk.size());
 
+	
 	lstate.ht->AddChunk(group_chunk, aggregate_input_chunk);
+	
 	return SinkResultType::NEED_MORE_INPUT;
 }
 
@@ -190,9 +192,11 @@ SourceResultType PhysicalPerfectHashAggregate::GetData(ExecutionContext &context
                                                        OperatorSourceInput &input) const {
 	auto &state = input.global_state.Cast<PerfectHashAggregateState>();
 	auto &gstate = sink_state->Cast<PerfectHashAggregateGlobalState>();
-
+	std::cout << "Before Scanned\n";
+	std::cout << chunk.ToString() << std::endl;
 	gstate.ht->Scan(state.ht_scan_position, chunk);
-
+	std::cout << "Scanned\n";
+	std::cout << chunk.ToString() << std::endl;
 	if (chunk.size() > 0) {
 		return SourceResultType::HAVE_MORE_OUTPUT;
 	} else {

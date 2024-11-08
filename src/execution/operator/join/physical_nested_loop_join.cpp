@@ -17,7 +17,7 @@ PhysicalNestedLoopJoin::PhysicalNestedLoopJoin(LogicalOperator &op, unique_ptr<P
                              estimated_cardinality) {
 	children.push_back(std::move(left));
 	children.push_back(std::move(right));
-	std::cout << "Yaha aa gya hu\n";
+	std::cout << "Inside PNLJ\n";
 }
 
 bool PhysicalJoin::HasNullValues(DataChunk &chunk) {
@@ -406,7 +406,7 @@ OperatorResultType PhysicalNestedLoopJoin::ResolveComplexJoin(ExecutionContext &
 			chunk.Slice(right_payload, rvector, match_count, input.ColumnCount());
 		}
 
-		std::cout << "In here: PNLJ\n";
+		std::cout << "In here: PNLJ ResolveComplexJoin\n";
 
 		// check if we exhausted the RHS, if we did we need to move to the next right chunk in the next iteration
 		if (state.right_tuple >= right_condition.size()) {

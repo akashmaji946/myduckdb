@@ -17,7 +17,7 @@ PhysicalAmUsJoin::PhysicalAmUsJoin(LogicalOperator &op, unique_ptr<PhysicalOpera
                              estimated_cardinality) {
 	children.push_back(std::move(left));
 	children.push_back(std::move(right));
-	std::cout << "Yaha shi se aa gya hu\n";
+	std::cout << "Inside Ph AMUS Join\n";
 }
 
 bool PhysicalJoin::HasNullValues_(DataChunk &chunk) {
@@ -411,7 +411,7 @@ OperatorResultType PhysicalAmUsJoin::ResolveComplexJoin(ExecutionContext &contex
 		}
 
 		std::cout << "In here: AULJ\n";
-		
+		std::cout << "DATA:\n"<< chunk.ToString() << std::endl;
 
 		// check if we exhausted the RHS, if we did we need to move to the next right chunk in the next iteration
 		if (state.right_tuple >= right_condition.size()) {

@@ -40,7 +40,7 @@ struct InitialAmUsJoin {
 			}
 			lpos = 0;
 		}
-		std::cout << "inside initial\n";
+		std::cout << "Inside initial amus join\n";
 		return result_count;
 	}
 };
@@ -75,7 +75,7 @@ struct RefineAmUsJoin {
 				result_count++;
 			}
 		}
-		std::cout << "inside refined\n";
+		std::cout << "inside refined amus join\n";
 		return result_count;
 	}
 };
@@ -191,7 +191,7 @@ idx_t AmUsJoinInner::Perform(idx_t &lpos, idx_t &rpos, DataChunk &left_condition
 		    l, r, left_conditions.size(), right_conditions.size(), lpos, rpos, lvector, rvector, match_count,
 		    conditions[i].comparison);
 	}
-	std::cout << "inside AMUSinner\n";
+	std::cout << "inside AMUS inner perform\n";
 	return match_count;
 }
 

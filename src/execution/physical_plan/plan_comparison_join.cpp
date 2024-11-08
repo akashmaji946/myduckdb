@@ -193,10 +193,15 @@ unique_ptr<PhysicalOperator> PhysicalPlanGenerator::PlanComparisonJoin(LogicalCo
 	const auto prefer_range_joins = client_config.prefer_range_joins && can_iejoin;
 
 	unique_ptr<PhysicalOperator> plan;
+
+
 	plan  = make_uniq<PhysicalAmUsJoin>(op, std::move(left), std::move(right), std::move(op.conditions),
 			                                         op.join_type, op.estimated_cardinality);
 	std::cout << "AMUS JOIN Returning\n";
 	return plan;
+
+
+
 	if (has_equality && !prefer_range_joins) {
 		// Equality join with small number of keys : possible perfect join optimization
 		PerfectHashJoinStats perfect_join_stats;
