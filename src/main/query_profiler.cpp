@@ -103,6 +103,7 @@ bool QueryProfiler::OperatorRequiresProfiling(PhysicalOperatorType op_type) {
 	case PhysicalOperatorType::UNNEST:
 	case PhysicalOperatorType::UNGROUPED_AGGREGATE:
 	case PhysicalOperatorType::HASH_GROUP_BY:
+	case PhysicalOperatorType::GROUPJOIN_GROUP_BY:
 	case PhysicalOperatorType::FILTER:
 	case PhysicalOperatorType::PROJECTION:
 	case PhysicalOperatorType::COPY_TO_FILE:

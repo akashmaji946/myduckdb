@@ -60,6 +60,7 @@ public:
 class PhysicalHashAggregate : public PhysicalOperator {
 public:
 	static constexpr const PhysicalOperatorType TYPE = PhysicalOperatorType::HASH_GROUP_BY;
+	// static PhysicalOperatorType TYPE = PhysicalOperatorType::GROUPJOIN_GROUP_BY;
 
 public:
 	PhysicalHashAggregate(ClientContext &context, vector<LogicalType> types, vector<unique_ptr<Expression>> expressions,

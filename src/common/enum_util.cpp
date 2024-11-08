@@ -5549,6 +5549,9 @@ PhysicalOperatorType EnumUtil::FromString<PhysicalOperatorType>(const char *valu
 	if (StringUtil::Equals(value, "PERFECT_HASH_GROUP_BY")) {
 		return PhysicalOperatorType::PERFECT_HASH_GROUP_BY;
 	}
+	if (StringUtil::Equals(value, "GROUPJOIN_GROUP_BY")) {
+		return PhysicalOperatorType::GROUPJOIN_GROUP_BY;
+	}
 	if (StringUtil::Equals(value, "FILTER")) {
 		return PhysicalOperatorType::FILTER;
 	}

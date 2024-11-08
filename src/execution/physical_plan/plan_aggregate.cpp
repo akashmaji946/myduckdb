@@ -189,13 +189,13 @@ unique_ptr<PhysicalOperator> PhysicalPlanGenerator::CreatePlan(LogicalAggregate 
 	std::cout << "My child is:" << (op.children[0])->GetName() << std::endl;
 
 	bool has = ContainsLogicalComparisonOperator(op);
+	std::cout << "HAS Logical Comp: " << has << std::endl;
 
-	std::cout << "HAS IT: " << has << std::endl;
 	auto plan = CreatePlan(*op.children[0]);
 
-	has = ContainsAMUSJoin(*plan);
-	std::cout << "HAS AMUS Child: " << has << std::endl;
-
+	bool has_amus_child = ContainsAMUSJoin(*plan);
+	std::cout << "HAS AMUS Child: " << has_amus_child << std::endl;
+	// std::cout <<  << std::endl;
 	plan = ExtractAggregateExpressions(std::move(plan), op.expressions, op.groups);
 
 	if (op.groups.empty() && op.grouping_sets.size() <= 1) {
@@ -232,6 +232,10 @@ unique_ptr<PhysicalOperator> PhysicalPlanGenerator::CreatePlan(LogicalAggregate 
 			    context, op.types, std::move(op.expressions), std::move(op.groups), std::move(op.grouping_sets),
 			    std::move(op.grouping_functions), op.estimated_cardinality);
 		}
+	}
+	if(has_amus_child){
+		// doesn't work like this
+		// groupby->TYPE = PhysicalOperatorType::GROUPJOIN_GROUP_BY;
 	}
 	std::cout << "I am groupby=>" << groupby->GetName() << std::endl;
 	groupby->children.push_back(std::move(plan));

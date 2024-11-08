@@ -41,6 +41,8 @@ string PhysicalOperatorToString(PhysicalOperatorType type) {
 		return "HASH_GROUP_BY";
 	case PhysicalOperatorType::PERFECT_HASH_GROUP_BY:
 		return "PERFECT_HASH_GROUP_BY";
+	case PhysicalOperatorType::GROUPJOIN_GROUP_BY:
+		return "GROUPJOIN_GROUP_BY";
 	case PhysicalOperatorType::FILTER:
 		return "FILTER";
 	case PhysicalOperatorType::PROJECTION:
