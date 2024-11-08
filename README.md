@@ -22,8 +22,8 @@ To run duckdb build, navigate to `duckdb/build/release` folder and run:
 ```bash
 ./duckdb mydb.db  # or use your .db file
 ```
-PS: This project contribution is under development, and contains redundant logs to stdout.
-Contact: akashmaji@iisc.ac.in for more suggestions and bug reports in this repo.
+- PS: This project contribution is under development, and contains redundant logs to stdout.
+- Contact: akashmaji@iisc.ac.in for more suggestions and bug reports in this repo.
 
 Work In Progress:
 1. Implementing a new Nested Loop Join Operator
