@@ -8,6 +8,7 @@
 #include <thread>
 #endif
 
+#include<iostream>
 namespace duckdb {
 
 PipelineExecutor::PipelineExecutor(ClientContext &context_p, Pipeline &pipeline_p)
@@ -167,6 +168,15 @@ SinkNextBatchType PipelineExecutor::NextBatch(duckdb::DataChunk &source_chunk) {
 
 PipelineExecuteResult PipelineExecutor::Execute(idx_t max_chunks) {
 	D_ASSERT(pipeline.sink);
+
+	std::cout << "***************Printing all the operators:\n";
+	for (const auto& op_ref : pipeline.operators) {
+        const auto& op = op_ref.get();
+        std::cout << op.GetName() << std::endl;
+    }
+	std::cout << "*********************************************\n";
+
+
 	auto &source_chunk = pipeline.operators.empty() ? final_chunk : *intermediate_chunks[0];
 	for (idx_t i = 0; i < max_chunks; i++) {
 		if (context.client.interrupted) {
@@ -529,6 +539,8 @@ void PipelineExecutor::EndOperator(PhysicalOperator &op, optional_ptr<DataChunk>
 	if (chunk) {
 		chunk->Verify();
 	}
+
+	// std::cout << "ENDING================================" << op.GetName()  << std::endl;
 }
 
 } // namespace duckdb

@@ -138,6 +138,8 @@ private:
 
 	void SchedulePipeline(const shared_ptr<MetaPipeline> &pipeline, ScheduleEventData &event_data);
 
+	bool PipelineHasOperatorType(Pipeline &pipeline, PhysicalOperatorType type) const;
+
 	bool NextExecutor();
 
 	shared_ptr<Pipeline> CreateChildPipeline(Pipeline &current, PhysicalOperator &op);

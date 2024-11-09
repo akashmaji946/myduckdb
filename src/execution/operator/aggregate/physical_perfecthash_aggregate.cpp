@@ -120,6 +120,7 @@ SinkResultType PhysicalPerfectHashAggregate::Sink(ExecutionContext &context, Dat
 	DataChunk &group_chunk = lstate.group_chunk;
 	DataChunk &aggregate_input_chunk = lstate.aggregate_input_chunk;
 	std::cout << "Agg:\n"<< aggregate_input_chunk.ToString() << std::endl;
+	std::cout << "Inside phy perf hash:\n"<< chunk.ToString() << std::endl;
 	for (idx_t group_idx = 0; group_idx < groups.size(); group_idx++) {
 		auto &group = groups[group_idx];
 		D_ASSERT(group->type == ExpressionType::BOUND_REF);
@@ -143,11 +144,11 @@ SinkResultType PhysicalPerfectHashAggregate::Sink(ExecutionContext &context, Dat
 			aggregate_input_chunk.data[aggregate_input_idx++].Reference(chunk.data[it->second]);
 		}
 	}
-
+	std::cout << "Inside phy perf hash:\n"<< chunk.ToString() << std::endl;
 	group_chunk.SetCardinality(chunk.size());
 
 	aggregate_input_chunk.SetCardinality(chunk.size());
-
+	std::cout << "Inside phy perf hash: group chunk: \n"<< group_chunk.ToString() << std::endl;
 	group_chunk.Verify();
 	aggregate_input_chunk.Verify();
 	D_ASSERT(aggregate_input_chunk.ColumnCount() == 0 || group_chunk.size() == aggregate_input_chunk.size());
@@ -192,10 +193,10 @@ SourceResultType PhysicalPerfectHashAggregate::GetData(ExecutionContext &context
                                                        OperatorSourceInput &input) const {
 	auto &state = input.global_state.Cast<PerfectHashAggregateState>();
 	auto &gstate = sink_state->Cast<PerfectHashAggregateGlobalState>();
-	std::cout << "Before Scanned\n";
+	std::cout << "Before Scanned:\n";
 	std::cout << chunk.ToString() << std::endl;
 	gstate.ht->Scan(state.ht_scan_position, chunk);
-	std::cout << "Scanned\n";
+	std::cout << "Scanned:\n";
 	std::cout << chunk.ToString() << std::endl;
 	if (chunk.size() > 0) {
 		return SourceResultType::HAVE_MORE_OUTPUT;

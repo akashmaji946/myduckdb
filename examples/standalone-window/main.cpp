@@ -8,7 +8,7 @@
 #include "duckdb/parallel/thread_context.hpp"
 #include "duckdb/function/aggregate/distributive_functions.hpp"
 #endif
-
+#include<iostream>
 using namespace duckdb;
 
 int main() {
@@ -83,6 +83,7 @@ int main() {
 		chunk.SetCardinality(STANDARD_VECTOR_SIZE);
 
 		// actually feed the data into the window function
+		std::cout << "SINK Called\n";
 		window->Sink(econtext, *global_state, *local_state, chunk);
 	}
 

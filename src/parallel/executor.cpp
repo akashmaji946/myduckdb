@@ -17,9 +17,10 @@
 #include "duckdb/parallel/pipeline_prepare_finish_event.hpp"
 #include "duckdb/parallel/task_scheduler.hpp"
 #include "duckdb/parallel/thread_context.hpp"
-
+#include<iostream>
 #include <algorithm>
 #include <chrono>
+
 
 namespace duckdb {
 
@@ -72,108 +73,135 @@ struct ScheduleEventData {
 };
 
 void Executor::SchedulePipeline(const shared_ptr<MetaPipeline> &meta_pipeline, ScheduleEventData &event_data) {
-	D_ASSERT(meta_pipeline);
-	auto &events = event_data.events;
-	auto &event_map = event_data.event_map;
+    D_ASSERT(meta_pipeline);
+    auto &events = event_data.events;
+    auto &event_map = event_data.event_map;
 
-	// create events/stack for the base pipeline
-	auto base_pipeline = meta_pipeline->GetBasePipeline();
-	auto base_initialize_event = make_shared_ptr<PipelineInitializeEvent>(base_pipeline);
-	auto base_event = make_shared_ptr<PipelineEvent>(base_pipeline);
-	auto base_prepare_finish_event = make_shared_ptr<PipelinePrepareFinishEvent>(base_pipeline);
-	auto base_finish_event = make_shared_ptr<PipelineFinishEvent>(base_pipeline);
-	auto base_complete_event =
-	    make_shared_ptr<PipelineCompleteEvent>(base_pipeline->executor, event_data.initial_schedule);
-	PipelineEventStack base_stack(*base_initialize_event, *base_event, *base_prepare_finish_event, *base_finish_event,
-	                              *base_complete_event);
-	events.push_back(std::move(base_initialize_event));
-	events.push_back(std::move(base_event));
-	events.push_back(std::move(base_prepare_finish_event));
-	events.push_back(std::move(base_finish_event));
-	events.push_back(std::move(base_complete_event));
+    // Create events for the base pipeline (as already done in the existing code)
+    auto base_pipeline = meta_pipeline->GetBasePipeline();
+    auto base_initialize_event = make_shared_ptr<PipelineInitializeEvent>(base_pipeline);
+    auto base_event = make_shared_ptr<PipelineEvent>(base_pipeline);
+    auto base_prepare_finish_event = make_shared_ptr<PipelinePrepareFinishEvent>(base_pipeline);
+    auto base_finish_event = make_shared_ptr<PipelineFinishEvent>(base_pipeline);
+    auto base_complete_event = make_shared_ptr<PipelineCompleteEvent>(base_pipeline->executor, event_data.initial_schedule);
 
-	// dependencies: initialize -> event -> prepare finish -> finish -> complete
-	base_stack.pipeline_event.AddDependency(base_stack.pipeline_initialize_event);
-	base_stack.pipeline_prepare_finish_event.AddDependency(base_stack.pipeline_event);
-	base_stack.pipeline_finish_event.AddDependency(base_stack.pipeline_prepare_finish_event);
-	base_stack.pipeline_complete_event.AddDependency(base_stack.pipeline_finish_event);
+    // Create a stack for the base pipeline and add events
+    PipelineEventStack base_stack(*base_initialize_event, *base_event, *base_prepare_finish_event, *base_finish_event, *base_complete_event);
+    events.push_back(std::move(base_initialize_event));
+    events.push_back(std::move(base_event));
+    events.push_back(std::move(base_prepare_finish_event));
+    events.push_back(std::move(base_finish_event));
+    events.push_back(std::move(base_complete_event));
 
-	// create an event and stack for all pipelines in the MetaPipeline
-	vector<shared_ptr<Pipeline>> pipelines;
-	meta_pipeline->GetPipelines(pipelines, false);
-	for (idx_t i = 1; i < pipelines.size(); i++) { // loop starts at 1 because 0 is the base pipeline
-		auto &pipeline = pipelines[i];
-		D_ASSERT(pipeline);
+    // Set up the dependencies for the base pipeline
+    base_stack.pipeline_event.AddDependency(base_stack.pipeline_initialize_event);
+    base_stack.pipeline_prepare_finish_event.AddDependency(base_stack.pipeline_event);
+    base_stack.pipeline_finish_event.AddDependency(base_stack.pipeline_prepare_finish_event);
+    base_stack.pipeline_complete_event.AddDependency(base_stack.pipeline_finish_event);
 
-		// create events/stack for this pipeline
-		auto pipeline_event = make_shared_ptr<PipelineEvent>(pipeline);
+    // Create events for all pipelines in the MetaPipeline
+    vector<shared_ptr<Pipeline>> pipelines;
+    meta_pipeline->GetPipelines(pipelines, false);
+    shared_ptr<Event> nested_loop_join_event = nullptr;
+    shared_ptr<Event> aggregate_event = nullptr;
 
-		auto finish_group = meta_pipeline->GetFinishGroup(*pipeline);
-		if (finish_group) {
-			// this pipeline is part of a finish group
-			const auto group_entry = event_map.find(*finish_group.get());
-			D_ASSERT(group_entry != event_map.end());
-			auto &group_stack = group_entry->second;
-			PipelineEventStack pipeline_stack(base_stack.pipeline_initialize_event, *pipeline_event,
-			                                  group_stack.pipeline_prepare_finish_event,
-			                                  group_stack.pipeline_finish_event, base_stack.pipeline_complete_event);
+    for (idx_t i = 1; i < pipelines.size(); i++) { // Loop starts at 1 to skip the base pipeline
+        auto &pipeline = pipelines[i];
+        D_ASSERT(pipeline);
 
-			// dependencies: base_finish -> pipeline_event -> group_prepare_finish
-			pipeline_stack.pipeline_event.AddDependency(base_stack.pipeline_finish_event);
-			group_stack.pipeline_prepare_finish_event.AddDependency(pipeline_stack.pipeline_event);
+        // Create events for this pipeline
+        auto pipeline_event = make_shared_ptr<PipelineEvent>(pipeline);
 
-			// add pipeline stack to event map
-			event_map.insert(make_pair(reference<Pipeline>(*pipeline), pipeline_stack));
-		} else if (meta_pipeline->HasFinishEvent(*pipeline)) {
-			// this pipeline has its own finish event (despite going into the same sink - Finalize twice!)
-			auto pipeline_prepare_finish_event = make_shared_ptr<PipelinePrepareFinishEvent>(pipeline);
-			auto pipeline_finish_event = make_shared_ptr<PipelineFinishEvent>(pipeline);
-			PipelineEventStack pipeline_stack(base_stack.pipeline_initialize_event, *pipeline_event,
-			                                  *pipeline_prepare_finish_event, *pipeline_finish_event,
-			                                  base_stack.pipeline_complete_event);
-			events.push_back(std::move(pipeline_prepare_finish_event));
-			events.push_back(std::move(pipeline_finish_event));
+        // Check if this pipeline is a Nested Loop Join or Aggregate
+        if (PipelineHasOperatorType(*pipeline, PhysicalOperatorType::NESTED_LOOP_JOIN) && !nested_loop_join_event) {
+            nested_loop_join_event = pipeline_event; // Store event for the nested loop join
+        }
 
-			// dependencies:
-			// base_finish -> pipeline_event -> pipeline_prepare_finish -> pipeline_finish -> base_complete
-			pipeline_stack.pipeline_event.AddDependency(base_stack.pipeline_finish_event);
-			pipeline_stack.pipeline_prepare_finish_event.AddDependency(pipeline_stack.pipeline_event);
-			pipeline_stack.pipeline_finish_event.AddDependency(pipeline_stack.pipeline_prepare_finish_event);
-			base_stack.pipeline_complete_event.AddDependency(pipeline_stack.pipeline_finish_event);
+        if (PipelineHasOperatorType(*pipeline, PhysicalOperatorType::PERFECT_HASH_GROUP_BY) && !aggregate_event) {
+            aggregate_event = pipeline_event; // Store event for the aggregate
+        }
 
-			// add pipeline stack to event map
-			event_map.insert(make_pair(reference<Pipeline>(*pipeline), pipeline_stack));
-		} else {
-			// no additional finish event
-			PipelineEventStack pipeline_stack(base_stack.pipeline_initialize_event, *pipeline_event,
-			                                  base_stack.pipeline_prepare_finish_event,
-			                                  base_stack.pipeline_finish_event, base_stack.pipeline_complete_event);
+        // Now, handle dependencies based on the operator types
+        if (nested_loop_join_event && aggregate_event) {
+            // Add dependency: aggregate starts after nested loop join finishes
+		    std::cout << "=-----------------------------I am success-------------------------------------\n";
 
-			// dependencies: base_initialize -> pipeline_event -> base_prepare_finish
-			pipeline_stack.pipeline_event.AddDependency(base_stack.pipeline_initialize_event);
-			base_stack.pipeline_prepare_finish_event.AddDependency(pipeline_stack.pipeline_event);
+            aggregate_event->AddDependency(*nested_loop_join_event);
+        }
 
-			// add pipeline stack to event map
-			event_map.insert(make_pair(reference<Pipeline>(*pipeline), pipeline_stack));
-		}
-		events.push_back(std::move(pipeline_event));
-	}
+        // Add other existing event stack and dependencies
+        auto finish_group = meta_pipeline->GetFinishGroup(*pipeline);
+        if (finish_group) {
+            // Handle finish group dependencies (existing logic)
+            const auto group_entry = event_map.find(*finish_group.get());
+            D_ASSERT(group_entry != event_map.end());
+            auto &group_stack = group_entry->second;
+            PipelineEventStack pipeline_stack(base_stack.pipeline_initialize_event, *pipeline_event,
+                                              group_stack.pipeline_prepare_finish_event,
+                                              group_stack.pipeline_finish_event, base_stack.pipeline_complete_event);
 
-	// add base stack to the event data too
-	event_map.insert(make_pair(reference<Pipeline>(*base_pipeline), base_stack));
+            pipeline_stack.pipeline_event.AddDependency(base_stack.pipeline_finish_event);
+            group_stack.pipeline_prepare_finish_event.AddDependency(pipeline_stack.pipeline_event);
 
-	for (auto &pipeline : pipelines) {
-		auto source = pipeline->GetSource();
-		if (source->type == PhysicalOperatorType::TABLE_SCAN) {
-			auto &table_function = source->Cast<PhysicalTableScan>();
-			if (table_function.function.global_initialization == TableFunctionInitialization::INITIALIZE_ON_SCHEDULE) {
-				// certain functions have to be eagerly initialized during scheduling
-				// if that is the case - initialize the function here
-				pipeline->ResetSource(true);
-			}
-		}
-	}
+            event_map.insert(make_pair(reference<Pipeline>(*pipeline), pipeline_stack));
+        } else if (meta_pipeline->HasFinishEvent(*pipeline)) {
+            // Handle finish event logic (existing)
+            auto pipeline_prepare_finish_event = make_shared_ptr<PipelinePrepareFinishEvent>(pipeline);
+            auto pipeline_finish_event = make_shared_ptr<PipelineFinishEvent>(pipeline);
+            PipelineEventStack pipeline_stack(base_stack.pipeline_initialize_event, *pipeline_event,
+                                              *pipeline_prepare_finish_event, *pipeline_finish_event,
+                                              base_stack.pipeline_complete_event);
+            events.push_back(std::move(pipeline_prepare_finish_event));
+            events.push_back(std::move(pipeline_finish_event));
+
+            pipeline_stack.pipeline_event.AddDependency(base_stack.pipeline_finish_event);
+            pipeline_stack.pipeline_prepare_finish_event.AddDependency(pipeline_stack.pipeline_event);
+            pipeline_stack.pipeline_finish_event.AddDependency(pipeline_stack.pipeline_prepare_finish_event);
+            base_stack.pipeline_complete_event.AddDependency(pipeline_stack.pipeline_finish_event);
+
+            event_map.insert(make_pair(reference<Pipeline>(*pipeline), pipeline_stack));
+        } else {
+            // No additional finish event logic (existing)
+            PipelineEventStack pipeline_stack(base_stack.pipeline_initialize_event, *pipeline_event,
+                                              base_stack.pipeline_prepare_finish_event,
+                                              base_stack.pipeline_finish_event, base_stack.pipeline_complete_event);
+
+            pipeline_stack.pipeline_event.AddDependency(base_stack.pipeline_initialize_event);
+            base_stack.pipeline_prepare_finish_event.AddDependency(pipeline_stack.pipeline_event);
+
+            event_map.insert(make_pair(reference<Pipeline>(*pipeline), pipeline_stack));
+        }
+
+        events.push_back(std::move(pipeline_event));
+    }
+
+    // Add base stack to the event map
+    event_map.insert(make_pair(reference<Pipeline>(*base_pipeline), base_stack));
+
+    // Handle initialization for table functions (existing)
+    for (auto &pipeline : pipelines) {
+        auto source = pipeline->GetSource();
+        if (source->type == PhysicalOperatorType::TABLE_SCAN) {
+            auto &table_function = source->Cast<PhysicalTableScan>();
+            if (table_function.function.global_initialization == TableFunctionInitialization::INITIALIZE_ON_SCHEDULE) {
+                pipeline->ResetSource(true); // Initialize eagerly if required
+            }
+        }
+    }
 }
+
+
+
+bool Executor::PipelineHasOperatorType(Pipeline &pipeline, PhysicalOperatorType type) const {
+    for (auto &op_ref : pipeline.operators) {
+		std::cout << op_ref.get().GetName() << std::endl;
+        if (op_ref.get().type == type) {  // `get()` is used because `op_ref` is a reference wrapper
+            return true;
+        }
+    }
+    return false;
+}
+
 
 void Executor::ScheduleEventsInternal(ScheduleEventData &event_data) {
 	auto &events = event_data.events;
@@ -183,6 +211,32 @@ void Executor::ScheduleEventsInternal(ScheduleEventData &event_data) {
 	for (auto &meta_pipeline : event_data.meta_pipelines) {
 		SchedulePipeline(meta_pipeline, event_data);
 	}
+
+
+
+		// Step 2: Identify the nested loop join and aggregate pipelines
+	PipelineEventStack *nested_loop_join_stack = nullptr;
+	PipelineEventStack *aggregate_pipeline_stack = nullptr;
+	for (auto &entry : event_data.event_map) {
+		auto &pipeline = entry.first.get();
+
+		// Example: Check if the pipeline contains the desired operator types
+		if (PipelineHasOperatorType(pipeline, PhysicalOperatorType::AM_US_JOIN)) {
+			nested_loop_join_stack = &entry.second;
+		} else if (PipelineHasOperatorType(pipeline, PhysicalOperatorType::PERFECT_HASH_GROUP_BY)) {
+			aggregate_pipeline_stack = &entry.second;
+		}
+	}
+
+	// // Ensure both stacks were found
+	// std::cout << "-------------------------------DEPENDENCY------------------------------\n";
+	// if(nested_loop_join_stack != nullptr && aggregate_pipeline_stack != nullptr){
+
+	// // Step 3: Add dependency: ensure aggregate pipeline waits until nested loop join pipeline completes
+	// aggregate_pipeline_stack->pipeline_initialize_event.AddDependency(nested_loop_join_stack->pipeline_complete_event);
+	// std::cout << "=-----------------------------I am success-------------------------------------\n";
+	// }
+	
 
 	// set up the dependencies for complete event
 	auto &event_map = event_data.event_map;
