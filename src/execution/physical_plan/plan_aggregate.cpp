@@ -2,6 +2,7 @@
 #include "duckdb/common/operator/subtract.hpp"
 #include "duckdb/execution/operator/aggregate/physical_hash_aggregate.hpp"
 #include "duckdb/execution/operator/aggregate/physical_perfecthash_aggregate.hpp"
+#include "duckdb/execution/operator/aggregate/physical_groupjoin_aggregate.hpp"
 #include "duckdb/execution/operator/aggregate/physical_ungrouped_aggregate.hpp"
 #include "duckdb/execution/operator/projection/physical_projection.hpp"
 #include "duckdb/execution/physical_plan_generator.hpp"
@@ -198,6 +199,18 @@ unique_ptr<PhysicalOperator> PhysicalPlanGenerator::CreatePlan(LogicalAggregate 
 	// std::cout <<  << std::endl;
 	plan = ExtractAggregateExpressions(std::move(plan), op.expressions, op.groups);
 
+	vector<idx_t> required_bits;
+	if(has_amus_child and CanUsePerfectHashAggregate(context, op, required_bits)){
+			// Check op.grouping_functions
+			groupby = make_uniq_base<PhysicalOperator, PhysicalGroupJoinAggregate>(
+			    context, op.types, std::move(op.expressions), std::move(op.groups), std::move(op.group_stats),
+			    std::move(required_bits), op.estimated_cardinality);
+
+			std::cout << "I am physical GROUPJOIN GROUPBY => " << groupby->GetName() << std::endl;
+			groupby->children.push_back(std::move(plan));
+			return groupby;
+	}
+
 	if (op.groups.empty() && op.grouping_sets.size() <= 1) {
 		std::cout << "===================no groups=========================\n";
 		// no groups, check if we can use a simple aggregation
@@ -233,11 +246,9 @@ unique_ptr<PhysicalOperator> PhysicalPlanGenerator::CreatePlan(LogicalAggregate 
 			    std::move(op.grouping_functions), op.estimated_cardinality);
 		}
 	}
-	if(has_amus_child){
-		// doesn't work like this
-		// groupby->TYPE = PhysicalOperatorType::GROUPJOIN_GROUP_BY;
-	}
-	std::cout << "I am groupby=>" << groupby->GetName() << std::endl;
+
+
+	std::cout << "I am physical GROUPBY => " << groupby->GetName() << std::endl;
 	groupby->children.push_back(std::move(plan));
 	return groupby;
 }

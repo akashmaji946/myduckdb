@@ -1,4 +1,4 @@
-#include "duckdb/execution/operator/aggregate/physical_perfecthash_aggregate.hpp"
+#include "duckdb/execution/operator/aggregate/physical_groupjoin_aggregate.hpp"
 
 #include "duckdb/execution/perfect_aggregate_hashtable.hpp"
 #include "duckdb/planner/expression/bound_aggregate_expression.hpp"
@@ -7,12 +7,12 @@
 #include <iostream>
 namespace duckdb {
 
-PhysicalPerfectHashAggregate::PhysicalPerfectHashAggregate(ClientContext &context, vector<LogicalType> types_p,
+PhysicalGroupJoinAggregate::PhysicalGroupJoinAggregate(ClientContext &context, vector<LogicalType> types_p,
                                                            vector<unique_ptr<Expression>> aggregates_p,
                                                            vector<unique_ptr<Expression>> groups_p,
                                                            const vector<unique_ptr<BaseStatistics>> &group_stats,
                                                            vector<idx_t> required_bits_p, idx_t estimated_cardinality)
-    : PhysicalOperator(PhysicalOperatorType::PERFECT_HASH_GROUP_BY, std::move(types_p), estimated_cardinality),
+    : PhysicalOperator(PhysicalOperatorType::GROUPJOIN_GROUP_BY, std::move(types_p), estimated_cardinality),
       groups(std::move(groups_p)), aggregates(std::move(aggregates_p)), required_bits(std::move(required_bits_p)) {
 	D_ASSERT(groups.size() == group_stats.size());
 	group_minima.reserve(group_stats.size());
@@ -69,7 +69,7 @@ PhysicalPerfectHashAggregate::PhysicalPerfectHashAggregate(ClientContext &contex
 	}
 }
 
-unique_ptr<PerfectAggregateHashTable> PhysicalPerfectHashAggregate::CreateHT(Allocator &allocator,
+unique_ptr<PerfectAggregateHashTable> PhysicalGroupJoinAggregate::CreateHT(Allocator &allocator,
                                                                              ClientContext &context) const {
 	return make_uniq<PerfectAggregateHashTable>(context, allocator, group_types, payload_types, aggregate_objects,
 	                                            group_minima, required_bits);
@@ -78,9 +78,9 @@ unique_ptr<PerfectAggregateHashTable> PhysicalPerfectHashAggregate::CreateHT(All
 //===--------------------------------------------------------------------===//
 // Sink
 //===--------------------------------------------------------------------===//
-class PerfectHashAggregateGlobalState : public GlobalSinkState {
+class PhysicalGroupJoinAggregateGlobalState : public GlobalSinkState {
 public:
-	PerfectHashAggregateGlobalState(const PhysicalPerfectHashAggregate &op, ClientContext &context)
+	PhysicalGroupJoinAggregateGlobalState(const PhysicalGroupJoinAggregate &op, ClientContext &context)
 	    : ht(op.CreateHT(Allocator::Get(context), context)) {
 	}
 
@@ -90,9 +90,9 @@ public:
 	unique_ptr<PerfectAggregateHashTable> ht;
 };
 
-class PerfectHashAggregateLocalState : public LocalSinkState {
+class PhysicalGroupJoinAggregateLocalState : public LocalSinkState {
 public:
-	PerfectHashAggregateLocalState(const PhysicalPerfectHashAggregate &op, ExecutionContext &context)
+	PhysicalGroupJoinAggregateLocalState(const PhysicalGroupJoinAggregate &op, ExecutionContext &context)
 	    : ht(op.CreateHT(Allocator::Get(context.client), context.client)) {
 		group_chunk.InitializeEmpty(op.group_types);
 		if (!op.payload_types.empty()) {
@@ -106,21 +106,21 @@ public:
 	DataChunk aggregate_input_chunk;
 };
 
-unique_ptr<GlobalSinkState> PhysicalPerfectHashAggregate::GetGlobalSinkState(ClientContext &context) const {
-	return make_uniq<PerfectHashAggregateGlobalState>(*this, context);
+unique_ptr<GlobalSinkState> PhysicalGroupJoinAggregate::GetGlobalSinkState(ClientContext &context) const {
+	return make_uniq<PhysicalGroupJoinAggregateGlobalState>(*this, context);
 }
 
-unique_ptr<LocalSinkState> PhysicalPerfectHashAggregate::GetLocalSinkState(ExecutionContext &context) const {
-	return make_uniq<PerfectHashAggregateLocalState>(*this, context);
+unique_ptr<LocalSinkState> PhysicalGroupJoinAggregate::GetLocalSinkState(ExecutionContext &context) const {
+	return make_uniq<PhysicalGroupJoinAggregateLocalState>(*this, context);
 }
 
-SinkResultType PhysicalPerfectHashAggregate::Sink(ExecutionContext &context, DataChunk &chunk,
+SinkResultType PhysicalGroupJoinAggregate::Sink(ExecutionContext &context, DataChunk &chunk,
                                                   OperatorSinkInput &input) const {
-	auto &lstate = input.local_state.Cast<PerfectHashAggregateLocalState>();
+	auto &lstate = input.local_state.Cast<PhysicalGroupJoinAggregateLocalState>();
 	DataChunk &group_chunk = lstate.group_chunk;
 	DataChunk &aggregate_input_chunk = lstate.aggregate_input_chunk;
 	std::cout << "Agg:\n"<< aggregate_input_chunk.ToString() << std::endl;
-	std::cout << "Inside phy groupjoin:\n"<< chunk.ToString() << std::endl;
+	std::cout << "Inside phy perf hash:\n"<< chunk.ToString() << std::endl;
 	for (idx_t group_idx = 0; group_idx < groups.size(); group_idx++) {
 		auto &group = groups[group_idx];
 		D_ASSERT(group->type == ExpressionType::BOUND_REF);
@@ -144,11 +144,11 @@ SinkResultType PhysicalPerfectHashAggregate::Sink(ExecutionContext &context, Dat
 			aggregate_input_chunk.data[aggregate_input_idx++].Reference(chunk.data[it->second]);
 		}
 	}
-	std::cout << "Inside phy groupjoin:\n"<< chunk.ToString() << std::endl;
+	std::cout << "Inside phy perf hash:\n"<< chunk.ToString() << std::endl;
 	group_chunk.SetCardinality(chunk.size());
 
 	aggregate_input_chunk.SetCardinality(chunk.size());
-	std::cout << "Inside phy groupjoin: group chunk: \n"<< group_chunk.ToString() << std::endl;
+	std::cout << "Inside phy perf hash: group chunk: \n"<< group_chunk.ToString() << std::endl;
 	group_chunk.Verify();
 	aggregate_input_chunk.Verify();
 	D_ASSERT(aggregate_input_chunk.ColumnCount() == 0 || group_chunk.size() == aggregate_input_chunk.size());
@@ -162,10 +162,10 @@ SinkResultType PhysicalPerfectHashAggregate::Sink(ExecutionContext &context, Dat
 //===--------------------------------------------------------------------===//
 // Combine
 //===--------------------------------------------------------------------===//
-SinkCombineResultType PhysicalPerfectHashAggregate::Combine(ExecutionContext &context,
+SinkCombineResultType PhysicalGroupJoinAggregate::Combine(ExecutionContext &context,
                                                             OperatorSinkCombineInput &input) const {
-	auto &lstate = input.local_state.Cast<PerfectHashAggregateLocalState>();
-	auto &gstate = input.global_state.Cast<PerfectHashAggregateGlobalState>();
+	auto &lstate = input.local_state.Cast<PhysicalGroupJoinAggregateLocalState>();
+	auto &gstate = input.global_state.Cast<PhysicalGroupJoinAggregateGlobalState>();
 
 	lock_guard<mutex> l(gstate.lock);
 	gstate.ht->Combine(*lstate.ht);
@@ -176,27 +176,27 @@ SinkCombineResultType PhysicalPerfectHashAggregate::Combine(ExecutionContext &co
 //===--------------------------------------------------------------------===//
 // Source
 //===--------------------------------------------------------------------===//
-class PerfectHashAggregateState : public GlobalSourceState {
+class GroupJoinAggregateState : public GlobalSourceState {
 public:
-	PerfectHashAggregateState() : ht_scan_position(0) {
+	GroupJoinAggregateState() : ht_scan_position(0) {
 	}
 
 	//! The current position to scan the HT for output tuples
 	idx_t ht_scan_position;
 };
 
-unique_ptr<GlobalSourceState> PhysicalPerfectHashAggregate::GetGlobalSourceState(ClientContext &context) const {
-	return make_uniq<PerfectHashAggregateState>();
+unique_ptr<GlobalSourceState> PhysicalGroupJoinAggregate::GetGlobalSourceState(ClientContext &context) const {
+	return make_uniq<GroupJoinAggregateState>();
 }
 
-SourceResultType PhysicalPerfectHashAggregate::GetData(ExecutionContext &context, DataChunk &chunk,
+SourceResultType PhysicalGroupJoinAggregate::GetData(ExecutionContext &context, DataChunk &chunk,
                                                        OperatorSourceInput &input) const {
-	auto &state = input.global_state.Cast<PerfectHashAggregateState>();
-	auto &gstate = sink_state->Cast<PerfectHashAggregateGlobalState>();
-	std::cout << "=====Before Scanned:\n";
+	auto &state = input.global_state.Cast<GroupJoinAggregateState>();
+	auto &gstate = sink_state->Cast<PhysicalGroupJoinAggregateGlobalState>();
+	std::cout << "Before Scanned:\n";
 	std::cout << chunk.ToString() << std::endl;
 	gstate.ht->Scan(state.ht_scan_position, chunk);
-	std::cout << "=====After Scanned:\n";
+	std::cout << "Scanned:\n";
 	std::cout << chunk.ToString() << std::endl;
 	if (chunk.size() > 0) {
 		return SourceResultType::HAVE_MORE_OUTPUT;
@@ -205,7 +205,7 @@ SourceResultType PhysicalPerfectHashAggregate::GetData(ExecutionContext &context
 	}
 }
 
-InsertionOrderPreservingMap<string> PhysicalPerfectHashAggregate::ParamsToString() const {
+InsertionOrderPreservingMap<string> PhysicalGroupJoinAggregate::ParamsToString() const {
 	InsertionOrderPreservingMap<string> result;
 	string groups_info;
 	for (idx_t i = 0; i < groups.size(); i++) {
