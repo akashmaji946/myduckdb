@@ -203,8 +203,8 @@ unique_ptr<PhysicalOperator> PhysicalPlanGenerator::CreatePlan(LogicalAggregate 
 	if(has_amus_child and CanUsePerfectHashAggregate(context, op, required_bits)){
 			// Check op.grouping_functions
 			groupby = make_uniq_base<PhysicalOperator, PhysicalGroupJoinAggregate>(
-			    context, op.types, std::move(op.expressions), std::move(op.groups), std::move(op.group_stats),
-			    std::move(required_bits), op.estimated_cardinality);
+			    context, op.types, std::move(op.expressions), std::move(op.groups), std::move(op.grouping_sets),
+			    std::move(op.grouping_functions), op.estimated_cardinality);
 
 			std::cout << "I am physical GROUPJOIN GROUPBY => " << groupby->GetName() << std::endl;
 			groupby->children.push_back(std::move(plan));
