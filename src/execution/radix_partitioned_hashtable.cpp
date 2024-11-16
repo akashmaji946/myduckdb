@@ -13,6 +13,8 @@
 #include "duckdb/planner/expression/bound_reference_expression.hpp"
 #include "duckdb/storage/temporary_memory_manager.hpp"
 
+#include<iostream>
+
 namespace duckdb {
 
 RadixPartitionedHashTable::RadixPartitionedHashTable(GroupingSet &grouping_set_p, const GroupedAggregateData &op_p)
@@ -440,21 +442,23 @@ void RadixPartitionedHashTable::Sink(ExecutionContext &context, DataChunk &chunk
                                      DataChunk &payload_input, const unsafe_vector<idx_t> &filter) const {
 	auto &gstate = input.global_state.Cast<RadixHTGlobalSinkState>();
 	auto &lstate = input.local_state.Cast<RadixHTLocalSinkState>();
+	std::cout << "kkkkkkkkkkkkkkkkkkkkkk1" << std::endl;
 	if (!lstate.ht) {
 		lstate.ht = CreateHT(context.client, gstate.config.sink_capacity, gstate.config.GetRadixBits());
 		gstate.active_threads++;
 	}
-
+	std::cout << "kkkkkkkkkkkkkkkkkkkkkk3" << std::endl;
 	auto &group_chunk = lstate.group_chunk;
+	std::cout << chunk.ToString() << std::endl;
 	PopulateGroupChunk(group_chunk, chunk);
-
+	std::cout << "kkkkkkkkkkkkkkkkkkkkkk5" << std::endl;
 	auto &ht = *lstate.ht;
 	ht.AddChunk(group_chunk, payload_input, filter);
-
+	std::cout << "kkkkkkkkkkkkkkkkkkkkkk7" << std::endl;
 	if (ht.Count() + STANDARD_VECTOR_SIZE < ht.ResizeThreshold()) {
 		return; // We can fit another chunk
 	}
-
+	std::cout << "kkkkkkkkkkkkkkkkkkkkkk9" << std::endl;
 	if (gstate.number_of_threads > 2) {
 		// 'Reset' the HT without taking its data, we can just keep appending to the same collection
 		// This only works because we never resize the HT
@@ -462,16 +466,16 @@ void RadixPartitionedHashTable::Sink(ExecutionContext &context, DataChunk &chunk
 		ht.ResetCount();
 		// We don't do this when running with 1 or 2 threads, it only makes sense when there's many threads
 	}
-
+	std::cout << "kkkkkkkkkkkkkkkkkkkkkk11" << std::endl;
 	// Check if we need to repartition
 	auto repartitioned = MaybeRepartition(context.client, gstate, lstate);
-
+	std::cout << "kkkkkkkkkkkkkkkkkkkkkk13" << std::endl;
 	if (repartitioned && ht.Count() != 0) {
 		// We repartitioned, but we didn't clear the pointer table / reset the count because we're on 1 or 2 threads
 		ht.ClearPointerTable();
 		ht.ResetCount();
 	}
-
+	std::cout << "kkkkkkkkkkkkkkkkkkkkkk15" << std::endl;
 	// TODO: combine early and often
 }
 
