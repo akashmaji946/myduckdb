@@ -13,7 +13,7 @@
 namespace duckdb {
 
 //! The default standard vector size
-#define DEFAULT_STANDARD_VECTOR_SIZE 8U
+#define DEFAULT_STANDARD_VECTOR_SIZE 4U
 
 //! The vector size used in the execution engine
 #ifndef STANDARD_VECTOR_SIZE
