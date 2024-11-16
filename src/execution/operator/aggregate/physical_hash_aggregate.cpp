@@ -16,7 +16,7 @@
 #include "duckdb/planner/expression/bound_aggregate_expression.hpp"
 #include "duckdb/planner/expression/bound_constant_expression.hpp"
 #include "duckdb/planner/expression/bound_reference_expression.hpp"
-
+#include<iostream>
 namespace duckdb {
 
 HashAggregateGroupingData::HashAggregateGroupingData(GroupingSet &grouping_set_p,
@@ -231,6 +231,7 @@ public:
 	}
 
 	DataChunk aggregate_input_chunk;
+	std::vector<std::unique_ptr<DataChunk>> aggregate_input_chunks;
 	vector<HashAggregateGroupingLocalState> grouping_states;
 	AggregateFilterDataSet filter_set;
 };
@@ -343,6 +344,67 @@ void PhysicalHashAggregate::SinkDistinct(ExecutionContext &context, DataChunk &c
 	}
 }
 
+
+void PhysicalHashAggregate::ProcessBufferedChunks(ExecutionContext &context, 
+                                                   HashAggregateLocalSinkState &local_state, 
+                                                   HashAggregateGlobalSinkState &global_state) const {
+    // Process all the buffered chunks
+	std::cout << "=====INSIDE===================\n";
+    for (auto &chunk_ptr : local_state.aggregate_input_chunks) {
+        // Dereference the unique_ptr to access the DataChunk
+
+		DataChunk &aggregate_input_chunk = local_state.aggregate_input_chunk;
+        DataChunk &chunk = *chunk_ptr;
+
+		std::cout << "Inside GJ: CHUNK:\n"<< chunk.ToString() << std::endl;
+
+        auto &aggregates = grouped_aggregate_data.aggregates;
+        idx_t aggregate_input_idx = 0;
+
+        // Populate the aggregate child vectors
+        for (auto &aggregate : aggregates) {
+            auto &aggr = aggregate->Cast<BoundAggregateExpression>();
+            for (auto &child_expr : aggr.children) {
+                D_ASSERT(child_expr->type == ExpressionType::BOUND_REF);
+                auto &bound_ref_expr = child_expr->Cast<BoundReferenceExpression>();
+                D_ASSERT(bound_ref_expr.index < chunk_ptr->data.size());
+                aggregate_input_chunk.data[aggregate_input_idx++].Reference(chunk_ptr->data[bound_ref_expr.index]);
+            }
+        }
+
+        // Populate the filter vectors
+        for (auto &aggregate : aggregates) {
+            auto &aggr = aggregate->Cast<BoundAggregateExpression>();
+            if (aggr.filter) {
+                auto it = filter_indexes.find(aggr.filter.get());
+                D_ASSERT(it != filter_indexes.end());
+                D_ASSERT(it->second < chunk_ptr->data.size());
+                aggregate_input_chunk.data[aggregate_input_idx++].Reference(chunk_ptr->data[it->second]);
+            }
+        }
+		std::cout << "666" << std::endl;
+        // For every grouping set there is one radix_table
+        for (idx_t i = 0; i < groupings.size(); i++) {
+            auto &grouping_global_state = global_state.grouping_states[i];
+            auto &grouping_local_state = local_state.grouping_states[i];
+            InterruptState interrupt_state;
+            OperatorSinkInput sink_input {*grouping_global_state.table_state, *grouping_local_state.table_state,
+                                          interrupt_state};
+
+            auto &grouping = groupings[i];
+            auto &table = grouping.table_data;
+			std::cout << "777" << std::endl;
+            table.Sink(context, *chunk_ptr, sink_input, aggregate_input_chunk, non_distinct_filter);
+        }
+
+		std::cout << "Inside GJ: CHUNK:\n"<< chunk.ToString() << std::endl;
+    }
+
+    // After processing, clear the buffer to make space for new chunks
+    local_state.aggregate_input_chunks.clear();
+}
+
+
 SinkResultType PhysicalHashAggregate::Sink(ExecutionContext &context, DataChunk &chunk,
                                            OperatorSinkInput &input) const {
 	auto &local_state = input.local_state.Cast<HashAggregateLocalSinkState>();
@@ -356,46 +418,65 @@ SinkResultType PhysicalHashAggregate::Sink(ExecutionContext &context, DataChunk 
 		return SinkResultType::NEED_MORE_INPUT;
 	}
 
-	DataChunk &aggregate_input_chunk = local_state.aggregate_input_chunk;
-	auto &aggregates = grouped_aggregate_data.aggregates;
-	idx_t aggregate_input_idx = 0;
+	std::cout << "input: CHUNK:\n"<< chunk.ToString() << std::endl;
+	auto new_chunk = std::make_unique<DataChunk>();
+	new_chunk->InitializeEmpty(chunk.GetTypes()); // Initialize the new DataChunk with the same types as 'chunk'
+	new_chunk->Reference(chunk); // Move the data from 'chunk' into 'new_chunk'
+	std::cout << "output: CHUNK:\n"<< new_chunk->ToString() << std::endl;
+	local_state.aggregate_input_chunks.push_back(std::move(new_chunk));
+	std::cout << "input: CHUNK:\n"<< chunk.ToString() << std::endl;
 
-	// Populate the aggregate child vectors
-	for (auto &aggregate : aggregates) {
-		auto &aggr = aggregate->Cast<BoundAggregateExpression>();
-		for (auto &child_expr : aggr.children) {
-			D_ASSERT(child_expr->type == ExpressionType::BOUND_REF);
-			auto &bound_ref_expr = child_expr->Cast<BoundReferenceExpression>();
-			D_ASSERT(bound_ref_expr.index < chunk.data.size());
-			aggregate_input_chunk.data[aggregate_input_idx++].Reference(chunk.data[bound_ref_expr.index]);
-		}
+
+	{
+			DataChunk &aggregate_input_chunk = local_state.aggregate_input_chunk;
+			auto &aggregates = grouped_aggregate_data.aggregates;
+			idx_t aggregate_input_idx = 0;
+
+	// // Populate the aggregate child vectors
+			for (auto &aggregate : aggregates) {
+				auto &aggr = aggregate->Cast<BoundAggregateExpression>();
+				for (auto &child_expr : aggr.children) {
+					D_ASSERT(child_expr->type == ExpressionType::BOUND_REF);
+					auto &bound_ref_expr = child_expr->Cast<BoundReferenceExpression>();
+					D_ASSERT(bound_ref_expr.index < chunk.data.size());
+					std::cout << "66666666" << std::endl;
+					aggregate_input_chunk.data[aggregate_input_idx++].Reference(chunk.data[bound_ref_expr.index]);
+				}
+			}
+			// Populate the filter vectors
+			for (auto &aggregate : aggregates) {
+				auto &aggr = aggregate->Cast<BoundAggregateExpression>();
+				if (aggr.filter) {
+					auto it = filter_indexes.find(aggr.filter.get());
+					D_ASSERT(it != filter_indexes.end());
+					D_ASSERT(it->second < chunk.data.size());
+					std::cout << "7777777" << std::endl;
+					aggregate_input_chunk.data[aggregate_input_idx++].Reference(chunk.data[it->second]);
+				}
+			}
+
+			aggregate_input_chunk.SetCardinality(chunk.size());
+			aggregate_input_chunk.Verify();
+
+			// For every grouping set there is one radix_table
+			for (idx_t i = 0; i < groupings.size(); i++) {
+				auto &grouping_global_state = global_state.grouping_states[i];
+				auto &grouping_local_state = local_state.grouping_states[i];
+				InterruptState interrupt_state;
+				OperatorSinkInput sink_input {*grouping_global_state.table_state, *grouping_local_state.table_state,
+											interrupt_state};
+
+				auto &grouping = groupings[i];
+				auto &table = grouping.table_data;
+				std::cout << "888888" << std::endl;
+				table.Sink(context, chunk, sink_input, aggregate_input_chunk, non_distinct_filter);
+				std::cout << "99999999" << std::endl;
+			}
 	}
-	// Populate the filter vectors
-	for (auto &aggregate : aggregates) {
-		auto &aggr = aggregate->Cast<BoundAggregateExpression>();
-		if (aggr.filter) {
-			auto it = filter_indexes.find(aggr.filter.get());
-			D_ASSERT(it != filter_indexes.end());
-			D_ASSERT(it->second < chunk.data.size());
-			aggregate_input_chunk.data[aggregate_input_idx++].Reference(chunk.data[it->second]);
-		}
-	}
 
-	aggregate_input_chunk.SetCardinality(chunk.size());
-	aggregate_input_chunk.Verify();
 
-	// For every grouping set there is one radix_table
-	for (idx_t i = 0; i < groupings.size(); i++) {
-		auto &grouping_global_state = global_state.grouping_states[i];
-		auto &grouping_local_state = local_state.grouping_states[i];
-		InterruptState interrupt_state;
-		OperatorSinkInput sink_input {*grouping_global_state.table_state, *grouping_local_state.table_state,
-		                              interrupt_state};
-
-		auto &grouping = groupings[i];
-		auto &table = grouping.table_data;
-		table.Sink(context, chunk, sink_input, aggregate_input_chunk, non_distinct_filter);
-	}
+	// std::cout << "exit GJ: Aggregate:\n"<< aggregate_input_chunk.ToString() << std::endl;
+	// std::cout << "exit GJ: CHUNK:\n"<< chunk.ToString() << std::endl;
 
 	return SinkResultType::NEED_MORE_INPUT;
 }
@@ -435,6 +516,8 @@ void PhysicalHashAggregate::CombineDistinct(ExecutionContext &context, OperatorS
 SinkCombineResultType PhysicalHashAggregate::Combine(ExecutionContext &context, OperatorSinkCombineInput &input) const {
 	auto &gstate = input.global_state.Cast<HashAggregateGlobalSinkState>();
 	auto &llstate = input.local_state.Cast<HashAggregateLocalSinkState>();
+
+	// ProcessBufferedChunks(context, llstate, gstate);
 
 	OperatorSinkCombineInput combine_distinct_input {gstate, llstate, input.interrupt_state};
 	CombineDistinct(context, combine_distinct_input);

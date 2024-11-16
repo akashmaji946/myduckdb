@@ -20,7 +20,8 @@ namespace duckdb {
 class ClientContext;
 class BufferManager;
 class PhysicalHashAggregate;
-
+class HashAggregateLocalSinkState;
+class HashAggregateGlobalSinkState;
 struct HashAggregateGroupingData {
 public:
 	HashAggregateGroupingData(GroupingSet &grouping_set_p, const GroupedAggregateData &grouped_aggregate_data,
@@ -119,6 +120,8 @@ public:
 	unique_ptr<LocalSinkState> GetLocalSinkState(ExecutionContext &context) const override;
 	unique_ptr<GlobalSinkState> GetGlobalSinkState(ClientContext &context) const override;
 
+	void ProcessBufferedChunks(ExecutionContext &context, HashAggregateLocalSinkState &local_state, 
+                                                  HashAggregateGlobalSinkState &global_state) const;
 	bool IsSink() const override {
 		return true;
 	}
