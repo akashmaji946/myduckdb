@@ -202,7 +202,7 @@ unique_ptr<PhysicalOperator> PhysicalPlanGenerator::CreatePlan(LogicalAggregate 
 	vector<idx_t> required_bits;
 	if(has_amus_child and CanUsePerfectHashAggregate(context, op, required_bits)){
 			// Check op.grouping_functions
-			groupby = make_uniq_base<PhysicalOperator, PhysicalPerfectHashAggregate>(
+			groupby = make_uniq_base<PhysicalOperator, PhysicalGroupJoinAggregate>(
 			    context, op.types, std::move(op.expressions), std::move(op.groups), std::move(op.group_stats),
 			    std::move(required_bits), op.estimated_cardinality);
 
