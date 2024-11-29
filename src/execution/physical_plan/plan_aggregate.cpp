@@ -12,6 +12,8 @@
 #include "duckdb/planner/expression/bound_aggregate_expression.hpp"
 #include "duckdb/planner/expression/bound_reference_expression.hpp"
 #include "duckdb/planner/operator/logical_aggregate.hpp"
+#include "duckdb/planner/operator/logical_groupjoin.hpp"
+
 #include<iostream>
 namespace duckdb {
 
@@ -185,28 +187,41 @@ bool ContainsAMUSJoin(const PhysicalOperator &node) {
 }
 
 unique_ptr<PhysicalOperator> PhysicalPlanGenerator::CreatePlan(LogicalAggregate &op) {
+
 	unique_ptr<PhysicalOperator> groupby;
+
 	D_ASSERT(op.children.size() == 1);
 	std::cout << "My child is:" << (op.children[0])->GetName() << std::endl;
 
 	bool has = ContainsLogicalComparisonOperator(op);
 	std::cout << "HAS Logical Comp: " << has << std::endl;
 
-	auto plan = CreatePlan(*op.children[0]);
+	std::cout << "MAINNNNNN................." << std::endl;
+	auto plan = CreatePlan((*op.children[0]));
+
+	auto plan1 = CreatePlan(*(*(*op.children[0]).children[0]).children[0]);
+	auto plan2 = CreatePlan(*(*(*op.children[0]).children[0]).children[1]);
+
+
+	
+	std::cout << "MAINNNNNN................." << std::endl;
 
 	bool has_amus_child = ContainsAMUSJoin(*plan);
 	std::cout << "HAS AMUS Child: " << has_amus_child << std::endl;
 	// std::cout <<  << std::endl;
-	plan = ExtractAggregateExpressions(std::move(plan), op.expressions, op.groups);
+	// plan = ExtractAggregateExpressions(std::move(plan), op.expressions, op.groups);
 
 	vector<idx_t> required_bits;
 	if(has_amus_child and CanUsePerfectHashAggregate(context, op, required_bits)){
 			// Check op.grouping_functions
-			groupby = make_uniq_base<PhysicalOperator, PhysicalGroupJoinAggregate>(
+		groupby = make_uniq_base<PhysicalOperator, PhysicalGroupJoinAggregate>(
 			    context, op.types, std::move(op.expressions), std::move(op.groups), std::move(op.group_stats),
 			    std::move(required_bits), op.estimated_cardinality);
 
 			std::cout << "I am physical GROUPJOIN GROUPBY => " << groupby->GetName() << std::endl;
+			// plan->children.clear();
+			// plan->children.push_back(std::move(plan1));
+			// plan->children.push_back(std::move(plan2));
 			groupby->children.push_back(std::move(plan));
 			return groupby;
 	}

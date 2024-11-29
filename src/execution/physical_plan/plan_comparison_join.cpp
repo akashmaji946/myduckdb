@@ -166,8 +166,9 @@ unique_ptr<PhysicalOperator> PhysicalPlanGenerator::PlanComparisonJoin(LogicalCo
 	right->estimated_cardinality = rhs_cardinality;
 	D_ASSERT(left && right);
 
-	if (op.conditions.empty()) {
+	if (false or op.conditions.empty()) {
 		// no conditions: insert a cross product
+		std::cout << "Quick\n";
 		return make_uniq<PhysicalCrossProduct>(op.types, std::move(left), std::move(right), op.estimated_cardinality);
 	}
 

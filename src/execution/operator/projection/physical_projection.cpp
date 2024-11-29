@@ -3,6 +3,7 @@
 #include "duckdb/execution/expression_executor.hpp"
 #include "duckdb/planner/expression/bound_reference_expression.hpp"
 
+#include <iostream>
 namespace duckdb {
 
 class ProjectionState : public OperatorState {
@@ -29,6 +30,8 @@ OperatorResultType PhysicalProjection::Execute(ExecutionContext &context, DataCh
                                                GlobalOperatorState &gstate, OperatorState &state_p) const {
 	auto &state = state_p.Cast<ProjectionState>();
 	state.executor.Execute(input, chunk);
+
+	std::cout << "=================================I am called=============================================\n";
 	return OperatorResultType::NEED_MORE_INPUT;
 }
 

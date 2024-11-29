@@ -13,6 +13,7 @@ unique_ptr<PhysicalOperator> PhysicalPlanGenerator::CreatePlan(LogicalProjection
 	}
 	std::cout << "=======================\n";
 	auto plan = CreatePlan(*op.children[0]);
+	// return plan;
 
 #ifdef DEBUG
 	for (auto &expr : op.expressions) {
@@ -21,6 +22,7 @@ unique_ptr<PhysicalOperator> PhysicalPlanGenerator::CreatePlan(LogicalProjection
 	}
 #endif
 	if (plan->types.size() == op.types.size()) {
+		std::cout << "INSIDE===========================================================>\n";
 		// check if this projection can be omitted entirely
 		// this happens if a projection simply emits the columns in the same order
 		// e.g. PROJECTION(#0, #1, #2, #3, ...)
@@ -37,12 +39,14 @@ unique_ptr<PhysicalOperator> PhysicalPlanGenerator::CreatePlan(LogicalProjection
 		}
 		if (omit_projection) {
 			// the projection only directly projects the child' columns: omit it entirely
+			std::cout << "INNER RETURN===========================================================>\n";
 			return plan;
 		}
 	}
 
 	auto projection = make_uniq<PhysicalProjection>(op.types, std::move(op.expressions), op.estimated_cardinality);
 	projection->children.push_back(std::move(plan));
+	std::cout << "OUTER RETURN===========================================================>\n";
 	return std::move(projection);
 }
 

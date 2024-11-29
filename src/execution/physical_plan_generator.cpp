@@ -51,9 +51,10 @@ unique_ptr<PhysicalOperator> PhysicalPlanGenerator::CreatePlan(unique_ptr<Logica
 	op->ResolveOperatorTypes();
 	profiler.EndPhase();
 
-	//////////////////PRINT
+	//////////////////PRINT///////////////////
+	std::cout << "Size =>" << op->children.size() << std::endl;
 	for(auto &child:  op->children){
-			std::cout << "Child=>" << child->GetName () << std::endl;
+			std::cout << "Children =>" << child->GetName () << std::endl;
 	}
 
 	// extract depfor()endencies from the logical plan
@@ -61,12 +62,13 @@ unique_ptr<PhysicalOperator> PhysicalPlanGenerator::CreatePlan(unique_ptr<Logica
 	extractor.VisitOperator(*op);
 
 	// then create the main physical plan
-	std::cout << "Creating phy plan for " << op->GetName() << "\n";
+	std::cout << "####################################START HERE: " << op->GetName() << "\n";
 	// op->GetName();
 	profiler.StartPhase(MetricsType::PHYSICAL_PLANNER_CREATE_PLAN);
 	auto plan = CreatePlan(*op);
 	profiler.EndPhase();
 
+	std::cout << "####################################END HERE: " << op->GetName() << "\n";
 	plan->Verify();
 	return plan;
 }																										
