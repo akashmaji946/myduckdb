@@ -13,26 +13,32 @@
   <a href="https://github.com/duckdb/duckdb/releases/"><img src="https://img.shields.io/github/v/release/duckdb/duckdb?color=brightgreen&display_name=tag&logo=duckdb&logoColor=white" alt="Latest Release"></a>
 </p>
 
-## Preface to the Project Contribution
-To build duckdb, navigate to the `duckdb` folder and run:
+## Preface to the Project Contribution: myduckdb
+Install or Download the folder in some directory. Let's call is $ROOT/
+To build duckdb, navigate to the `duckdb` folder within $ROOT/ and run:
 ```bash
 make release
 ```
-To run duckdb build, navigate to `duckdb/build/release` folder and run:
+To run duckdb build, navigate to `$ROOT/duckdb/build/release` folder and run:
 ```bash
 ./duckdb mydb.db  # or use your .db file
 ```
+Find somple sample sql-files at  `$ROOT/duckdb/sql_files/`
+
 - PS: This project contribution is under development, and contains redundant logs to stdout.
 - Contact: akashmaji@iisc.ac.in for more suggestions and bug reports in this repo.
 
 Work In Progress:
-1. Implementing a new Nested Loop Join Operator
-2. Using the planner to always select our plan
-3. Implementing a GroupJoin Operator to replace a plan containing "Group By" followed by a "Join"
+1. Implementing a new Nested Loop Join Operator [AM_US_JOIN]
+2. Using the planner to always select our plan 
+3. Implementing a GroupJoin Operator [GROUPJOIN] to replace a plan containing "Group By" followed by a "Join"
 
 ## DuckDB
 
-DuckDB is a high-performance analytical database system. It is designed to be fast, reliable, portable, and easy to use. DuckDB provides a rich SQL dialect, with support far beyond basic SQL. DuckDB supports arbitrary and nested correlated subqueries, window functions, collations, complex types (arrays, structs, maps), and [several extensions designed to make SQL easier to use](https://duckdb.org/docs/guides/sql_features/friendly_sql).
+DuckDB is a high-performance analytical database system. 
+It is designed to be fast, reliable, portable, and easy to use. 
+DuckDB provides a rich SQL dialect, with support far beyond basic SQL. 
+DuckDB supports arbitrary and nested correlated subqueries, window functions, collations, complex types (arrays, structs, maps), and [several extensions designed to make SQL easier to use](https://duckdb.org/docs/guides/sql_features/friendly_sql).
 
 DuckDB is available as a [standalone CLI application](https://duckdb.org/docs/api/cli/overview) and has clients for [Python](https://duckdb.org/docs/api/python/overview), [R](https://duckdb.org/docs/api/r), [Java](https://duckdb.org/docs/api/java), [Wasm](https://duckdb.org/docs/api/wasm/overview), etc., with deep integrations with packages such as [pandas](https://duckdb.org/docs/guides/python/sql_on_pandas) and [dplyr](https://duckdblabs.github.io/duckplyr/).
 
