@@ -124,7 +124,7 @@ void Executor::SchedulePipeline(const shared_ptr<MetaPipeline> &meta_pipeline, S
         // Now, handle dependencies based on the operator types
         if (nested_loop_join_event && aggregate_event) {
             // Add dependency: aggregate starts after nested loop join finishes
-		    std::cout << "=-----------------------------I am success-------------------------------------\n";
+		    // std::cout << "=-----------------------------I am success-------------------------------------\n";
 
             aggregate_event->AddDependency(*nested_loop_join_event);
         }
@@ -194,7 +194,7 @@ void Executor::SchedulePipeline(const shared_ptr<MetaPipeline> &meta_pipeline, S
 
 bool Executor::PipelineHasOperatorType(Pipeline &pipeline, PhysicalOperatorType type) const {
     for (auto &op_ref : pipeline.operators) {
-		std::cout << op_ref.get().GetName() << std::endl;
+		// std::cout << op_ref.get().GetName() << std::endl;
         if (op_ref.get().type == type) {  // `get()` is used because `op_ref` is a reference wrapper
             return true;
         }

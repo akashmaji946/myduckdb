@@ -83,7 +83,7 @@ int main() {
 		chunk.SetCardinality(STANDARD_VECTOR_SIZE);
 
 		// actually feed the data into the window function
-		std::cout << "SINK Called\n";
+		// std::cout << "SINK Called\n";
 		window->Sink(econtext, *global_state, *local_state, chunk);
 	}
 

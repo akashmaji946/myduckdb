@@ -9,24 +9,17 @@
 #pragma once
 
 #include "duckdb/execution/operator/join/physical_comparison_join.hpp"
-#include "duckdb/execution/operator/aggregate/physical_groupjoin_aggregate.hpp"
 
 namespace duckdb {
 
 //! PhysicalAmUsJoin represents a nested loop join between two tables
-class PhysicalAmUsJoin : public PhysicalOperator {
+class PhysicalAmUsJoin : public PhysicalComparisonJoin {
 public:
 	static constexpr const PhysicalOperatorType TYPE = PhysicalOperatorType::AM_US_JOIN;
 
 public:
-	public:
-    PhysicalAmUsJoin(
-        JoinType join_type,
-        vector<LogicalType> join_types,
-        vector<LogicalType> group_types,
-        vector<unique_ptr<Expression>> group_expressions,
-        vector<unique_ptr<Expression>> aggregate_expressions,
-        unique_ptr<PerfectAggregateHashTable> aggregate_ht);
+	PhysicalAmUsJoin(LogicalOperator &op, unique_ptr<PhysicalOperator> left, unique_ptr<PhysicalOperator> right,
+	                       vector<JoinCondition> cond, JoinType join_type, idx_t estimated_cardinality);
 
 public:
 	// Operator Interface
@@ -81,8 +74,12 @@ private:
 	// resolve joins that output max N elements (SEMI, ANTI, MARK)
 	void ResolveSimpleJoin(ExecutionContext &context, DataChunk &input, DataChunk &chunk, OperatorState &state) const;
 	// resolve joins that can potentially output N*M elements (INNER, LEFT, FULL)
+
+private:
 	OperatorResultType ResolveComplexJoin(ExecutionContext &context, DataChunk &input, DataChunk &chunk,
-	                                      OperatorState &state) const;
+                                          OperatorState &state) const;
+
+										  
 };
 
 } // namespace duckdb

@@ -191,23 +191,23 @@ unique_ptr<PhysicalOperator> PhysicalPlanGenerator::CreatePlan(LogicalAggregate 
 	unique_ptr<PhysicalOperator> groupby;
 
 	D_ASSERT(op.children.size() == 1);
-	std::cout << "My child is:" << (op.children[0])->GetName() << std::endl;
+	// std::cout << "My child is:" << (op.children[0])->GetName() << std::endl;
 
 	bool has = ContainsLogicalComparisonOperator(op);
-	std::cout << "HAS Logical Comp: " << has << std::endl;
+	// std::cout << "HAS Logical Comp: " << has << std::endl;
 
-	std::cout << "MAINNNNNN................." << std::endl;
+	// std::cout << "MAINNNNNN................." << std::endl;
 	auto plan = CreatePlan((*op.children[0]));
 
-	auto plan1 = CreatePlan(*(*(*op.children[0]).children[0]).children[0]);
-	auto plan2 = CreatePlan(*(*(*op.children[0]).children[0]).children[1]);
+	// auto plan1 = CreatePlan(*(*(*op.children[0]).children[0]).children[0]);
+	// auto plan2 = CreatePlan(*(*(*op.children[0]).children[0]).children[1]);
 
 
 	
-	std::cout << "MAINNNNNN................." << std::endl;
+	// std::cout << "MAINNNNNN................." << std::endl;
 
 	bool has_amus_child = ContainsAMUSJoin(*plan);
-	std::cout << "HAS AMUS Child: " << has_amus_child << std::endl;
+	// std::cout << "HAS AMUS Child: " << has_amus_child << std::endl;
 	// std::cout <<  << std::endl;
 	// plan = ExtractAggregateExpressions(std::move(plan), op.expressions, op.groups);
 
@@ -218,7 +218,7 @@ unique_ptr<PhysicalOperator> PhysicalPlanGenerator::CreatePlan(LogicalAggregate 
 			    context, op.types, std::move(op.expressions), std::move(op.groups), std::move(op.group_stats),
 			    std::move(required_bits), op.estimated_cardinality);
 
-			std::cout << "I am physical GROUPJOIN GROUPBY => " << groupby->GetName() << std::endl;
+			// std::cout << "I am physical GROUPJOIN GROUPBY => " << groupby->GetName() << std::endl;
 			// plan->children.clear();
 			// plan->children.push_back(std::move(plan1));
 			// plan->children.push_back(std::move(plan2));
@@ -227,7 +227,7 @@ unique_ptr<PhysicalOperator> PhysicalPlanGenerator::CreatePlan(LogicalAggregate 
 	}
 
 	if (op.groups.empty() && op.grouping_sets.size() <= 1) {
-		std::cout << "===================no groups=========================\n";
+		// std::cout << "===================no groups=========================\n";
 		// no groups, check if we can use a simple aggregation
 		// special case: aggregate entire columns together
 		bool use_simple_aggregation = true;
@@ -247,7 +247,7 @@ unique_ptr<PhysicalOperator> PhysicalPlanGenerator::CreatePlan(LogicalAggregate 
 			    context, op.types, std::move(op.expressions), op.estimated_cardinality);
 		}
 	} else {
-		std::cout << "===================groups=========================\n";
+		// std::cout << "===================groups=========================\n";
 		// groups! create a GROUP BY aggregator
 		// use a perfect hash aggregate if possible
 		vector<idx_t> required_bits;
@@ -263,7 +263,7 @@ unique_ptr<PhysicalOperator> PhysicalPlanGenerator::CreatePlan(LogicalAggregate 
 	}
 
 
-	std::cout << "I am physical GROUPBY => " << groupby->GetName() << std::endl;
+	// std::cout << "I am physical GROUPBY => " << groupby->GetName() << std::endl;
 	groupby->children.push_back(std::move(plan));
 	return groupby;
 }

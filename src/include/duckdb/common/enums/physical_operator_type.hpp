@@ -57,6 +57,7 @@ enum class PhysicalOperatorType : uint8_t {
 	// -----------------------------
 	BLOCKWISE_NL_JOIN,
 	NESTED_LOOP_JOIN,
+	GROUP_JOIN,
 	AM_US_JOIN,
 	HASH_JOIN,
 	CROSS_PRODUCT,

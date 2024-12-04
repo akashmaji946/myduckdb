@@ -17,6 +17,7 @@ add_library_unity(
   physical_piecewise_merge_join.cpp
   physical_positional_join.cpp
   physical_range_join.cpp
+  physical_group_join.cpp
   physical_right_delim_join.cpp)
 set(ALL_OBJECT_FILES
     ${ALL_OBJECT_FILES} $<TARGET_OBJECTS:duckdb_operator_join>

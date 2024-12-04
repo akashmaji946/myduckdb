@@ -155,20 +155,38 @@ bool PhysicalPlanGenerator::HasEquality(vector<JoinCondition> &conds, idx_t &ran
 	return false;
 }
 
+bool can_do_physical_amus_join(ClientConfig& client_config, 
+ 							   LogicalComparisonJoin& op,
+							   unique_ptr<PhysicalOperator>& left, 
+							   unique_ptr<PhysicalOperator>& right){
+	bool can_use = false;
+	if(PhysicalAmUsJoin::IsSupported(op.conditions, op.join_type)){
+		if (left->estimated_cardinality <= client_config.am_us_join_threshold ||
+		right->estimated_cardinality <= client_config.am_us_join_threshold) {
+			can_use = true;
+		}
+	}
+	return can_use;
+}
+
 unique_ptr<PhysicalOperator> PhysicalPlanGenerator::PlanComparisonJoin(LogicalComparisonJoin &op) {
 	// now visit the children
 	D_ASSERT(op.children.size() == 2);
+
 	idx_t lhs_cardinality = op.children[0]->EstimateCardinality(context);
 	idx_t rhs_cardinality = op.children[1]->EstimateCardinality(context);
+
 	auto left = CreatePlan(*op.children[0]);
 	auto right = CreatePlan(*op.children[1]);
+
 	left->estimated_cardinality = lhs_cardinality;
 	right->estimated_cardinality = rhs_cardinality;
+
 	D_ASSERT(left && right);
 
 	if (false or op.conditions.empty()) {
 		// no conditions: insert a cross product
-		std::cout << "Quick\n";
+		// std::cout << "Cross Product Taken\n";
 		return make_uniq<PhysicalCrossProduct>(op.types, std::move(left), std::move(right), op.estimated_cardinality);
 	}
 
@@ -196,11 +214,13 @@ unique_ptr<PhysicalOperator> PhysicalPlanGenerator::PlanComparisonJoin(LogicalCo
 	unique_ptr<PhysicalOperator> plan;
 
 
-	plan  = make_uniq<PhysicalAmUsJoin>(op, std::move(left), std::move(right), std::move(op.conditions),
-			                                         op.join_type, op.estimated_cardinality);
-	std::cout << "AMUS JOIN Returning\n";
-	return plan;
 
+    if(can_do_physical_amus_join(client_config, op, left, right)){
+		plan  = make_uniq<PhysicalAmUsJoin>(op, std::move(left), std::move(right), std::move(op.conditions),
+														op.join_type, op.estimated_cardinality);
+		// std::cout << "AM_US_JOIN Physical Plan Taken\n";
+		return plan;
+	}
 
 
 	if (has_equality && !prefer_range_joins) {

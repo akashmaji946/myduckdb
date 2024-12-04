@@ -1,0 +1,26 @@
+# name: test/sql/amusjoin/simple_tables_insert.test
+# group [amusjoin]
+# desciption: Project8 DuckDB 
+
+# insertion: 7 affected row
+statement ok
+INSERT INTO stud (sid, sname, sage) VALUES
+    (101, 'A', 25),
+    (102, 'B', 26),
+    (103, 'A', 27),
+    (104, 'B', 23),
+    (105, 'A', 30),
+    (107, 'D', 30),
+    (108, 'C', 25);
+
+# insertion: 7 affected row
+statement ok
+INSERT INTO enrol (sid, cid) VALUES
+    (101, 1),
+    (101, 2),
+    (102, 3),
+    (103, 4),
+    (102, 2),
+    (105, 1),
+    (108, 1);
+

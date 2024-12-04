@@ -1,0 +1,32 @@
+# name: test/sql/amusjoin/simple_tables_create.test
+# group [amusjoin]
+# desciption: Project8 DuckDB 
+
+# enable query verification
+statement ok
+PRAGMA enable_verification
+
+# create table stud
+statement ok
+CREATE TABLE stud (
+    sid INT,
+    sname VARCHAR(50),
+    sage INT
+);
+
+
+# create table enrol
+statement ok
+CREATE TABLE enrol (
+    sid INT,
+    cid INT
+);
+
+# insertion: 1 affected row
+statement ok
+INSERT INTO a VALUES (42, 84);
+
+query II
+SELECT * FROM a;
+----
+42	84

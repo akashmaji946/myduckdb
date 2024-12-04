@@ -52,9 +52,9 @@ unique_ptr<PhysicalOperator> PhysicalPlanGenerator::CreatePlan(unique_ptr<Logica
 	profiler.EndPhase();
 
 	//////////////////PRINT///////////////////
-	std::cout << "Size =>" << op->children.size() << std::endl;
+	// std::cout << "Size =>" << op->children.size() << std::endl;
 	for(auto &child:  op->children){
-			std::cout << "Children =>" << child->GetName () << std::endl;
+			// std::cout << "Children =>" << child->GetName () << std::endl;
 	}
 
 	// extract depfor()endencies from the logical plan
@@ -62,22 +62,38 @@ unique_ptr<PhysicalOperator> PhysicalPlanGenerator::CreatePlan(unique_ptr<Logica
 	extractor.VisitOperator(*op);
 
 	// then create the main physical plan
-	std::cout << "####################################START HERE: " << op->GetName() << "\n";
+	// std::cout << "####################################START HERE: " << op->GetName() << "\n";
 	// op->GetName();
 	profiler.StartPhase(MetricsType::PHYSICAL_PLANNER_CREATE_PLAN);
 	auto plan = CreatePlan(*op);
 	profiler.EndPhase();
 
-	std::cout << "####################################END HERE: " << op->GetName() << "\n";
+	// std::cout << "####################################END HERE: " << op->GetName() << "\n";
 	plan->Verify();
 	return plan;
 }																										
 
+bool canReplaceByGroupJoin(LogicalOperator &op){
+	if(op.type != LogicalOperatorType::LOGICAL_AGGREGATE_AND_GROUP_BY) return false;
+	auto &groupby = op.Cast<LogicalAggregate>();
+	if(groupby.groups.size() > 0 && groupby.children[0]->children[0]->type == LogicalOperatorType::LOGICAL_COMPARISON_JOIN){
+		return true;
+	}
+	return false;
+}
+
 unique_ptr<PhysicalOperator> PhysicalPlanGenerator::CreatePlan(LogicalOperator &op) {
 	op.estimated_cardinality = op.EstimateCardinality(context);
 	unique_ptr<PhysicalOperator> plan = nullptr;
-	std::cout << "Inside Create Plan: ";
-	std::cout << LogicalOperatorToString(op.type) << std::endl;
+	
+	
+	if(canReplaceByGroupJoin(op)){
+		std::cout << "Group Join Candidate Found !" << std::endl;
+
+		// plan= PlanGroupJoin(op.Cast<LogicalAggregate>());
+	}
+
+
 	switch (op.type) {
 	case LogicalOperatorType::LOGICAL_GET:
 		plan = CreatePlan(op.Cast<LogicalGet>());
@@ -92,7 +108,7 @@ unique_ptr<PhysicalOperator> PhysicalPlanGenerator::CreatePlan(LogicalOperator &
 		plan = CreatePlan(op.Cast<LogicalFilter>());
 		break;
 	case LogicalOperatorType::LOGICAL_AGGREGATE_AND_GROUP_BY:
-		std::cout << "===========logagg================\n";
+		// std::cout << "===========logagg================\n";
 		plan = CreatePlan(op.Cast<LogicalAggregate>());
 		break;
 	case LogicalOperatorType::LOGICAL_WINDOW:
@@ -126,7 +142,7 @@ unique_ptr<PhysicalOperator> PhysicalPlanGenerator::CreatePlan(LogicalOperator &
 	case LogicalOperatorType::LOGICAL_ASOF_JOIN:
 	case LogicalOperatorType::LOGICAL_DELIM_JOIN:
 	case LogicalOperatorType::LOGICAL_COMPARISON_JOIN:
-		std::cout << "===========logcomp================\n";
+		// std::cout << "===========logcomp================\n";
 		plan = CreatePlan(op.Cast<LogicalComparisonJoin>());
 		break;
 	case LogicalOperatorType::LOGICAL_CROSS_PRODUCT:

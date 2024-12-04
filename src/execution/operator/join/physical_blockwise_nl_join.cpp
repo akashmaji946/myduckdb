@@ -238,7 +238,7 @@ OperatorResultType PhysicalBlockwiseNLJoin::ExecuteInternal(ExecutionContext &co
     // Loop through RHS chunks in reverse order
 	std :: cout << "Counter Size NLJ:" << gstate.right_chunks.Count() << std::endl;
     for (idx_t chunk_idx = gstate.right_chunks.ChunkCount(); chunk_idx > 0; chunk_idx--) {
-		std::cout << "===================Loop Backwards=======================\n";
+		// std::cout << "===================Loop Backwards=======================\n";
         DataChunk rhs_chunk;
         gstate.right_chunks.FetchChunk(chunk_idx - 1, rhs_chunk); // Fetch chunk in reverse order
 

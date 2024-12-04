@@ -169,12 +169,12 @@ SinkNextBatchType PipelineExecutor::NextBatch(duckdb::DataChunk &source_chunk) {
 PipelineExecuteResult PipelineExecutor::Execute(idx_t max_chunks) {
 	D_ASSERT(pipeline.sink);
 
-	std::cout << "***************Printing all the operators:\n";
+	// std::cout << "***************Printing all the operators:\n";
 	for (const auto& op_ref : pipeline.operators) {
         const auto& op = op_ref.get();
-        std::cout << op.GetName() << std::endl;
+        // std::cout << op.GetName() << std::endl;
     }
-	std::cout << "*********************************************\n";
+	// std::cout << "*********************************************\n";
 
 
 	auto &source_chunk = pipeline.operators.empty() ? final_chunk : *intermediate_chunks[0];

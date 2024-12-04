@@ -1,0 +1,16 @@
+# name: test/sql/amusjoin/simple_tables_amusjoin.test
+# group [amusjoin]
+# desciption: Project8 DuckDB 
+
+query II
+SELECT stud.sid, enrol.cid
+FROM stud
+JOIN enrol ON stud.sid = enrol.sid;
+----
+101 1
+101 2
+102 3
+103 4
+102 2
+105 1
+108 12

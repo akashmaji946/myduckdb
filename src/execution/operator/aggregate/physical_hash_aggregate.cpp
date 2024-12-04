@@ -349,14 +349,14 @@ void PhysicalHashAggregate::ProcessBufferedChunks(ExecutionContext &context,
                                                    HashAggregateLocalSinkState &local_state, 
                                                    HashAggregateGlobalSinkState &global_state) const {
     // Process all the buffered chunks
-	std::cout << "=====INSIDE===================\n";
+	// std::cout << "=====INSIDE===================\n";
     for (auto &chunk_ptr : local_state.aggregate_input_chunks) {
         // Dereference the unique_ptr to access the DataChunk
 
 		DataChunk &aggregate_input_chunk = local_state.aggregate_input_chunk;
         DataChunk &chunk = *chunk_ptr;
 
-		std::cout << "Inside GJ: CHUNK:\n"<< chunk.ToString() << std::endl;
+		// std::cout << "Inside GJ: CHUNK:\n"<< chunk.ToString() << std::endl;
 
         auto &aggregates = grouped_aggregate_data.aggregates;
         idx_t aggregate_input_idx = 0;
@@ -382,7 +382,7 @@ void PhysicalHashAggregate::ProcessBufferedChunks(ExecutionContext &context,
                 aggregate_input_chunk.data[aggregate_input_idx++].Reference(chunk_ptr->data[it->second]);
             }
         }
-		std::cout << "666" << std::endl;
+		// std::cout << "666" << std::endl;
         // For every grouping set there is one radix_table
         for (idx_t i = 0; i < groupings.size(); i++) {
             auto &grouping_global_state = global_state.grouping_states[i];
@@ -393,11 +393,11 @@ void PhysicalHashAggregate::ProcessBufferedChunks(ExecutionContext &context,
 
             auto &grouping = groupings[i];
             auto &table = grouping.table_data;
-			std::cout << "777" << std::endl;
+			// std::cout << "777" << std::endl;
             table.Sink(context, *chunk_ptr, sink_input, aggregate_input_chunk, non_distinct_filter);
         }
 
-		std::cout << "Inside GJ: CHUNK:\n"<< chunk.ToString() << std::endl;
+		// std::cout << "Inside GJ: CHUNK:\n"<< chunk.ToString() << std::endl;
     }
 
     // After processing, clear the buffer to make space for new chunks
@@ -418,13 +418,13 @@ SinkResultType PhysicalHashAggregate::Sink(ExecutionContext &context, DataChunk 
 		return SinkResultType::NEED_MORE_INPUT;
 	}
 
-	std::cout << "input: CHUNK:\n"<< chunk.ToString() << std::endl;
+	// std::cout << "input: CHUNK:\n"<< chunk.ToString() << std::endl;
 	auto new_chunk = std::make_unique<DataChunk>();
 	new_chunk->InitializeEmpty(chunk.GetTypes()); // Initialize the new DataChunk with the same types as 'chunk'
 	new_chunk->Reference(chunk); // Move the data from 'chunk' into 'new_chunk'
-	std::cout << "output: CHUNK:\n"<< new_chunk->ToString() << std::endl;
+	// std::cout << "output: CHUNK:\n"<< new_chunk->ToString() << std::endl;
 	local_state.aggregate_input_chunks.push_back(std::move(new_chunk));
-	std::cout << "input: CHUNK:\n"<< chunk.ToString() << std::endl;
+	// std::cout << "input: CHUNK:\n"<< chunk.ToString() << std::endl;
 
 
 	{
@@ -439,7 +439,7 @@ SinkResultType PhysicalHashAggregate::Sink(ExecutionContext &context, DataChunk 
 					D_ASSERT(child_expr->type == ExpressionType::BOUND_REF);
 					auto &bound_ref_expr = child_expr->Cast<BoundReferenceExpression>();
 					D_ASSERT(bound_ref_expr.index < chunk.data.size());
-					std::cout << "66666666" << std::endl;
+					// std::cout << "66666666" << std::endl;
 					aggregate_input_chunk.data[aggregate_input_idx++].Reference(chunk.data[bound_ref_expr.index]);
 				}
 			}
@@ -450,7 +450,7 @@ SinkResultType PhysicalHashAggregate::Sink(ExecutionContext &context, DataChunk 
 					auto it = filter_indexes.find(aggr.filter.get());
 					D_ASSERT(it != filter_indexes.end());
 					D_ASSERT(it->second < chunk.data.size());
-					std::cout << "7777777" << std::endl;
+					// std::cout << "7777777" << std::endl;
 					aggregate_input_chunk.data[aggregate_input_idx++].Reference(chunk.data[it->second]);
 				}
 			}
@@ -468,9 +468,9 @@ SinkResultType PhysicalHashAggregate::Sink(ExecutionContext &context, DataChunk 
 
 				auto &grouping = groupings[i];
 				auto &table = grouping.table_data;
-				std::cout << "888888" << std::endl;
+				// std::cout << "888888" << std::endl;
 				table.Sink(context, chunk, sink_input, aggregate_input_chunk, non_distinct_filter);
-				std::cout << "99999999" << std::endl;
+				// std::cout << "99999999" << std::endl;
 			}
 	}
 

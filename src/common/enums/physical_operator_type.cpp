@@ -61,6 +61,8 @@ string PhysicalOperatorToString(PhysicalOperatorType type) {
 		return "NESTED_LOOP_JOIN";
 	case PhysicalOperatorType::AM_US_JOIN:
 		return "AM_US_JOIN";
+	case PhysicalOperatorType::GROUP_JOIN:
+		return "GROUP_JOIN";
 	case PhysicalOperatorType::HASH_JOIN:
 		return "HASH_JOIN";
 	case PhysicalOperatorType::PIECEWISE_MERGE_JOIN:

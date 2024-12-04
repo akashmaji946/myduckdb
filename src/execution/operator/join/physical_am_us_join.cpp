@@ -17,7 +17,7 @@ PhysicalAmUsJoin::PhysicalAmUsJoin(LogicalOperator &op, unique_ptr<PhysicalOpera
                              estimated_cardinality) {
 	children.push_back(std::move(left));
 	children.push_back(std::move(right));
-	std::cout << "Inside Ph AMUS Join\n";
+	// std::cout << "Inside Ph AMUS Join\n";
 }
 
 bool PhysicalJoin::HasNullValues_(DataChunk &chunk) {
@@ -120,9 +120,6 @@ bool PhysicalAmUsJoin::IsSupported(const vector<JoinCondition> &conditions, Join
 			return false;
 		}
 	}
-	// To avoid situations like https://github.com/duckdb/duckdb/issues/10046
-	// If there is an equality in the conditions, a hash join is planned
-	// with one condition, we can use mark join logic, otherwise we should use physical blockwise nl join
 	if (join_type == JoinType::SEMI || join_type == JoinType::ANTI) {
 		return conditions.size() == 1;
 	}
@@ -341,7 +338,7 @@ OperatorResultType PhysicalAmUsJoin::ResolveComplexJoin(ExecutionContext &contex
 
 	// std::cout << "INPUT:" << input.ToString() << std::endl;
 	// std::cout << "OUTPUT:" << chunk.ToString() << std::endl;
-	std::cout << "l:r => " << state.fetch_next_left << ":" << state.fetch_next_right << std::endl;
+	// std::cout << "l:r => " << state.fetch_next_left << ":" << state.fetch_next_right << std::endl;
 	idx_t match_count;
 	do {
 		if (state.fetch_next_right) {
@@ -393,8 +390,8 @@ OperatorResultType PhysicalAmUsJoin::ResolveComplexJoin(ExecutionContext &contex
 		left_chunk.Verify();
 		right_condition.Verify();
 		right_payload.Verify();
-		std::cout << "LEFT:\n"<< left_chunk.ToString() << std::endl;
-		std::cout << "RIGHT:\n"<< right_payload.ToString() << std::endl;
+		// std::cout << "LEFT:\n"<< left_chunk.ToString() << std::endl;
+		// std::cout << "RIGHT:\n"<< right_payload.ToString() << std::endl;
 		// now perform the join
 		SelectionVector lvector(STANDARD_VECTOR_SIZE), rvector(STANDARD_VECTOR_SIZE);
 		match_count = AmUsJoinInner::Perform(state.left_tuple, state.right_tuple, state.left_condition,
@@ -410,8 +407,8 @@ OperatorResultType PhysicalAmUsJoin::ResolveComplexJoin(ExecutionContext &contex
 			chunk.Slice(right_payload, rvector, match_count, input.ColumnCount());
 		}
 
-		std::cout << "In here: AULJ\n";
-		std::cout << "DATA:\n"<< chunk.ToString() << std::endl;
+		// std::cout << "In here: AULJ\n";
+		// std::cout << "DATA:\n"<< chunk.ToString() << std::endl;
 
 		// check if we exhausted the RHS, if we did we need to move to the next right chunk in the next iteration
 		if (state.right_tuple >= right_condition.size()) {

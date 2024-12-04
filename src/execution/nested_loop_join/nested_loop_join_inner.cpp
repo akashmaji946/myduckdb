@@ -40,7 +40,7 @@ struct InitialNestedLoopJoin {
 			}
 			lpos = 0;
 		}
-		std::cout << "inside initial\n";
+		// std::cout << "inside initial\n";
 		return result_count;
 	}
 };
@@ -75,7 +75,7 @@ struct RefineNestedLoopJoin {
 				result_count++;
 			}
 		}
-		std::cout << "inside refined\n";
+		// std::cout << "inside refined\n";
 		return result_count;
 	}
 };
@@ -191,7 +191,7 @@ idx_t NestedLoopJoinInner::Perform(idx_t &lpos, idx_t &rpos, DataChunk &left_con
 		    l, r, left_conditions.size(), right_conditions.size(), lpos, rpos, lvector, rvector, match_count,
 		    conditions[i].comparison);
 	}
-	std::cout << "inside inner\n";
+	// std::cout << "inside inner\n";
 	return match_count;
 }
 
