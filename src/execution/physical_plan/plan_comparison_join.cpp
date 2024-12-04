@@ -161,7 +161,7 @@ bool can_do_physical_amus_join(ClientConfig& client_config,
 							   unique_ptr<PhysicalOperator>& right){
 	bool can_use = false;
 	if(PhysicalAmUsJoin::IsSupported(op.conditions, op.join_type)){
-		if (left->estimated_cardinality <= client_config.am_us_join_threshold ||
+		if (left->estimated_cardinality <= client_config.am_us_join_threshold &&
 		right->estimated_cardinality <= client_config.am_us_join_threshold) {
 			can_use = true;
 		}

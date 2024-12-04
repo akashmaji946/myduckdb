@@ -6,7 +6,7 @@
 namespace duckdb {
 
 SelectStatement::SelectStatement(const SelectStatement &other) : SQLStatement(other), node(other.node->Copy()) {
-	std::cout << "Hi, I am here 1\n";
+	// std::cout << "Hi, I am here 1\n";
 }
 
 unique_ptr<SQLStatement> SelectStatement::Copy() const {

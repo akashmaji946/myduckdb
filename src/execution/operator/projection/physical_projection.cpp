@@ -31,7 +31,7 @@ OperatorResultType PhysicalProjection::Execute(ExecutionContext &context, DataCh
 	auto &state = state_p.Cast<ProjectionState>();
 	state.executor.Execute(input, chunk);
 
-	std::cout << "=================================I am called=============================================\n";
+	// std::cout << "=================================I am called=============================================\n";
 	return OperatorResultType::NEED_MORE_INPUT;
 }
 
