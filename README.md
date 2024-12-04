@@ -14,8 +14,9 @@
 </p>
 
 ## Preface to the Project Contribution: myduckdb
-Install or Download the folder in some directory. Let's call is $ROOT/
-To build duckdb, navigate to the `duckdb` folder within $ROOT/ and run:
+- Install or Download the folder in some directory. 
+- Let's call is $ROOT/
+- To build duckdb, navigate to the `duckdb` folder within $ROOT/ and run:
 ```bash
 make release
 ```
