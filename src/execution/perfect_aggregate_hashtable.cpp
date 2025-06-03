@@ -11,15 +11,20 @@ PerfectAggregateHashTable::PerfectAggregateHashTable(ClientContext &context, All
                                                      vector<LogicalType> payload_types_p,
                                                      vector<AggregateObject> aggregate_objects_p,
                                                      vector<Value> group_minima_p, vector<idx_t> required_bits_p)
+
     : BaseAggregateHashTable(context, allocator, aggregate_objects_p, std::move(payload_types_p)),
       addresses(LogicalType::POINTER), required_bits(std::move(required_bits_p)), total_required_bits(0),
       group_minima(std::move(group_minima_p)), sel(STANDARD_VECTOR_SIZE),
       aggregate_allocator(make_uniq<ArenaAllocator>(allocator)) {
+
+
 	for (auto &group_bits : required_bits) {
 		total_required_bits += group_bits;
 	}
+
 	// the total amount of groups we allocate space for is 2^required_bits
 	total_groups = (uint64_t)1 << total_required_bits;
+	
 	// we don't need to store the groups in a perfect hash table, since the group keys can be deduced by their location
 	grouping_columns = group_types_p.size();
 	layout.Initialize(std::move(aggregate_objects_p));

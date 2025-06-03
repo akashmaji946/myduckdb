@@ -14,6 +14,7 @@ PhysicalGroupJoinAggregate::PhysicalGroupJoinAggregate(ClientContext &context, v
                                                            vector<idx_t> required_bits_p, idx_t estimated_cardinality)
     : PhysicalOperator(PhysicalOperatorType::GROUPJOIN_GROUP_BY, std::move(types_p), estimated_cardinality),
       groups(std::move(groups_p)), aggregates(std::move(aggregates_p)), required_bits(std::move(required_bits_p)) {
+
 	D_ASSERT(groups.size() == group_stats.size());
 	group_minima.reserve(group_stats.size());
 	for (auto &stats : group_stats) {
@@ -28,6 +29,7 @@ PhysicalGroupJoinAggregate::PhysicalGroupJoinAggregate(ClientContext &context, v
 
 	vector<BoundAggregateExpression *> bindings;
 	vector<LogicalType> payload_types_filters;
+
 	for (auto &expr : aggregates) {
 		D_ASSERT(expr->expression_class == ExpressionClass::BOUND_AGGREGATE);
 		D_ASSERT(expr->IsAggregate());
@@ -43,6 +45,7 @@ PhysicalGroupJoinAggregate::PhysicalGroupJoinAggregate(ClientContext &context, v
 			payload_types_filters.push_back(aggr.filter->return_type);
 		}
 	}
+	
 	for (const auto &pay_filters : payload_types_filters) {
 		payload_types.push_back(pay_filters);
 	}

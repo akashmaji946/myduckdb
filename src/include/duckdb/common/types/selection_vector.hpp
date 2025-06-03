@@ -78,6 +78,7 @@ public:
 		selection_data = std::move(data);
 		sel_vector = selection_data->owned_data.get();
 	}
+	
 	void Initialize(const SelectionVector &other) {
 		selection_data = other.selection_data;
 		sel_vector = other.sel_vector;

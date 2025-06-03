@@ -17,6 +17,7 @@
 #include <stdexcept>
 
 namespace duckdb {
+
 enum class PhysicalType : uint8_t;
 struct LogicalType;
 class Expression;
@@ -91,6 +92,7 @@ enum class ExceptionType : uint8_t {
 	    42 // An invalid configuration was detected (e.g. a Secret param was missing, or a required setting not found)
 };
 
+
 class Exception : public std::runtime_error {
 public:
 	DUCKDB_API Exception(ExceptionType exception_type, const string &message);
@@ -144,6 +146,7 @@ public:
 
 	DUCKDB_API static void SetQueryLocation(optional_idx error_location, unordered_map<string, string> &extra_info);
 };
+
 
 //===--------------------------------------------------------------------===//
 // Exception derived classes

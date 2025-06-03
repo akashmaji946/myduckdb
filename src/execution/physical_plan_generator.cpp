@@ -1,5 +1,4 @@
 #include "duckdb/execution/physical_plan_generator.hpp"
-
 #include "duckdb/catalog/catalog_entry/scalar_function_catalog_entry.hpp"
 #include "duckdb/common/types/column/column_data_collection.hpp"
 #include "duckdb/execution/column_binding_resolver.hpp"
@@ -54,7 +53,7 @@ unique_ptr<PhysicalOperator> PhysicalPlanGenerator::CreatePlan(unique_ptr<Logica
 	//////////////////PRINT///////////////////
 	// std::cout << "Size =>" << op->children.size() << std::endl;
 	for(auto &child:  op->children){
-			// std::cout << "Children =>" << child->GetName () << std::endl;
+		std::cout << "Children =>" << child->GetName () << std::endl;
 	}
 
 	// extract depfor()endencies from the logical plan
@@ -63,13 +62,16 @@ unique_ptr<PhysicalOperator> PhysicalPlanGenerator::CreatePlan(unique_ptr<Logica
 
 	// then create the main physical plan
 	// std::cout << "####################################START HERE: " << op->GetName() << "\n";
-	// op->GetName();
+	std::cout << "OP NAME\n" << std::endl;
+	op->GetName();
 	profiler.StartPhase(MetricsType::PHYSICAL_PLANNER_CREATE_PLAN);
 	auto plan = CreatePlan(*op);
 	profiler.EndPhase();
 
 	// std::cout << "####################################END HERE: " << op->GetName() << "\n";
 	plan->Verify();
+
+	std::cout << "RETURNING THE PLAN\n" << std::endl;
 	return plan;
 }																										
 
@@ -90,7 +92,9 @@ unique_ptr<PhysicalOperator> PhysicalPlanGenerator::CreatePlan(LogicalOperator &
 	if(canReplaceByGroupJoin(op)){
 		std::cout << "Group Join Candidate Found !" << std::endl;
 
-		// plan= PlanGroupJoin(op.Cast<LogicalAggregate>());
+		plan= PlanGroupJoin(op.Cast<LogicalAggregate>());
+		plan->estimated_cardinality = op.estimated_cardinality;
+		return plan;
 	}
 
 

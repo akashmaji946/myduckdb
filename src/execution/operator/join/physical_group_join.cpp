@@ -19,8 +19,11 @@ PhysicalGroupJoin::PhysicalGroupJoin(LogicalOperator &op, unique_ptr<PhysicalOpe
                                      vector<unique_ptr<Expression>> &aggregates_p)
     : PhysicalJoin(op, PhysicalOperatorType::GROUP_JOIN, join_type, estimated_cardinality),
       condition(std::move(condition_p)), groups(std::move(groups_p)), aggregates(std::move(aggregates_p)) {
-    children.push_back(std::move(left));
+
+    std::cout << "Inside PhysicalGroupJoin()" << std::endl;    
+
     children.push_back(std::move(right));
+    children.push_back(std::move(left));
     D_ASSERT(join_type != JoinType::MARK);
     D_ASSERT(join_type != JoinType::SINGLE);
 
@@ -30,12 +33,7 @@ PhysicalGroupJoin::PhysicalGroupJoin(LogicalOperator &op, unique_ptr<PhysicalOpe
         if (comp_expr.type == ExpressionType::COMPARE_EQUAL) {
             // For equijoins, we can extract the grouping attributes
             // Ensure both sides are bound references
-            // if (comp_expr.left->expression_class == ExpressionClass::BOUND_REFERENCE &&
-            //     comp_expr.right->expression_class == ExpressionClass::BOUND_REFERENCE) {
-            //     // Valid equijoin on bound references
-            // } else {
-            //     throw NotImplementedException("PhysicalGroupJoin only supports equijoins on bound references");
-            // }
+          
         } else {
             throw NotImplementedException("PhysicalGroupJoin only supports equijoins");
         }
@@ -62,6 +60,8 @@ class GroupJoinLocalSinkState : public LocalSinkState {
 public:
     GroupJoinLocalSinkState(Allocator &allocator, const PhysicalGroupJoin &op, ClientContext &context)
         : aggregate_executor(context) {
+
+        std::cout << "Inside GroupJoinLocalSinkState()" << std::endl;
         // Prepare the aggregate executor
         for (auto &aggr_expr : op.aggregates) {
             aggregate_executor.AddExpression(*aggr_expr);
@@ -76,6 +76,9 @@ public:
             }
         }
         aggregate_input_chunk.Initialize(allocator, aggregate_input_types);
+        
+        std::cout << "Outside GroupJoinLocalSinkState()" << std::endl;
+
     }
 
     //! Expression executor for the aggregates
@@ -85,17 +88,28 @@ public:
 };
 
 unique_ptr<GlobalSinkState> PhysicalGroupJoin::GetGlobalSinkState(ClientContext &context) const {
+
+    std::cout << "Inside GetGlobalSinkState()" << std::endl;
+
     auto state = make_uniq<GroupJoinGlobalSinkState>();
 
     // Get the types from the left and right children
     auto &left_types = children[0]->types;
+    std::cout << children[0]->ToString() << std::endl;
+    std::cout << "Inside GetGlobalSinkState()  1" << std::endl;
+
     auto &right_types = children[1]->types;
+    std::cout << children[1]->ToString() << std::endl;
+    std::cout << "Inside GetGlobalSinkState()  2" << std::endl;
+
+    std::cout << right_types[0].ToString() << std::endl;
 
     // Extract the bound comparison expression
     auto &comp_expr = condition->Cast<BoundComparisonExpression>();
     auto &left_expr = comp_expr.left->Cast<BoundReferenceExpression>();
     auto &right_expr = comp_expr.right->Cast<BoundReferenceExpression>();
 
+    std::cout << "SIZE:"<< groups.size() << std::endl;
     // Adjust the grouping indices to be relative to the right child's output
     for (auto &group : groups) {
         // if (group->expression_class != ExpressionClass::BOUND_REFERENCE) {
@@ -108,9 +122,13 @@ unique_ptr<GlobalSinkState> PhysicalGroupJoin::GetGlobalSinkState(ClientContext 
         // }
         
         state->grouping_indices.push_back(idx);
+        std::cout << "Inside GetGlobalSinkState()  2.seclast" << std::endl;
+        std::cout << idx << std::endl;
         state->group_types.push_back(right_types[idx]);
+        std::cout << "Inside GetGlobalSinkState()  2.last" << std::endl;
     }
 
+    std::cout << "Inside GetGlobalSinkState()  3" << std::endl;
     // Prepare the aggregate objects
     for (auto &aggr_expr : aggregates) {
         if (aggr_expr->expression_class != ExpressionClass::BOUND_AGGREGATE) {
@@ -128,6 +146,8 @@ unique_ptr<GlobalSinkState> PhysicalGroupJoin::GetGlobalSinkState(ClientContext 
                                                              state->aggregate_objects);
     
     return std::move(state);
+    std::cout << "Inside GetGlobalSinkState() END" << std::endl;
+
 }
 
 unique_ptr<LocalSinkState> PhysicalGroupJoin::GetLocalSinkState(ExecutionContext &context) const {
@@ -135,6 +155,9 @@ unique_ptr<LocalSinkState> PhysicalGroupJoin::GetLocalSinkState(ExecutionContext
 }
 
 SinkResultType PhysicalGroupJoin::Sink(ExecutionContext &context, DataChunk &chunk, OperatorSinkInput &input) const {
+    
+    std::cout << "Inside Sink()" << std::endl;
+
     auto &global_state = input.global_state.Cast<GroupJoinGlobalSinkState>();
     auto &local_state = input.local_state.Cast<GroupJoinLocalSinkState>();
 
@@ -159,6 +182,7 @@ SinkResultType PhysicalGroupJoin::Sink(ExecutionContext &context, DataChunk &chu
 SinkFinalizeType PhysicalGroupJoin::Finalize(Pipeline &pipeline, Event &event, ClientContext &context,
                                              OperatorSinkFinalizeInput &input) const {
     // No finalization required
+    std::cout << "Inside Finalize()" << std::endl;
     return SinkFinalizeType::READY;
 }
 
@@ -180,6 +204,9 @@ public:
 };
 
 unique_ptr<OperatorState> PhysicalGroupJoin::GetOperatorState(ExecutionContext &context) const {
+
+    std::cout << "Inside GetOperatorState()" << std::endl;
+
     auto &global_state = sink_state->Cast<GroupJoinGlobalSinkState>();
     auto state = make_uniq<GroupJoinOperatorState>(context.client, *this);
 
@@ -192,52 +219,42 @@ unique_ptr<OperatorState> PhysicalGroupJoin::GetOperatorState(ExecutionContext &
 
 OperatorResultType PhysicalGroupJoin::ExecuteInternal(ExecutionContext &context, DataChunk &input, DataChunk &chunk,
                                                       GlobalOperatorState &gstate_p, OperatorState &state_p) const {
-    D_ASSERT(input.size() > 0);
-    auto &state = state_p.Cast<GroupJoinOperatorState>();
-    auto &global_state = sink_state->Cast<GroupJoinGlobalSinkState>();
 
-    // Evaluate the grouping keys from the input
-    DataChunk &groups = state.group_chunk;
-    groups.Reset();
-    state.group_executor.Execute(input, groups);
+    // auto &global_state = sink_state->Cast<GroupJoinGlobalSinkState>();
+    // auto &local_state = input.local_state.Cast<GroupJoinLocalSinkState>();
 
-    // Fetch the aggregates from the hash table
-    DataChunk &aggregates = state.aggregate_chunk;
-    aggregates.Reset();
+    // // Probe join hash table with left input
+    // DataChunk join_result;
+    // global_state.join_hash_table->Probe(input, join_result);
 
-    global_state.hash_table->FetchAggregates(groups, aggregates);
+    // if (join_result.size() == 0) {
+    //     return OperatorResultType::NEED_MORE_INPUT; // no matches for this chunk
+    // }
 
-    // Construct the result chunk
-    idx_t input_cols = input.ColumnCount();
-    idx_t aggregate_cols = aggregates.ColumnCount();
+    // // Extract grouping keys and aggregate inputs from join result
+    // DataChunk groups_chunk;
+    // groups_chunk.Initialize(global_state.group_types);
 
-    vector<LogicalType> result_types;
-    result_types.reserve(input_cols + aggregate_cols);
+    // for (idx_t i = 0; i < global_state.grouping_indices.size(); i++) {
+    //     groups_chunk.data[i].Reference(join_result.data[global_state.grouping_indices[i]]);
+    // }
+    // groups_chunk.SetCardinality(join_result.size());
 
-    // Append input columns to the result
-    for (idx_t col_idx = 0; col_idx < input_cols; col_idx++) {
-        result_types.push_back(input.data[col_idx].GetType());
-    }
+    // // Evaluate aggregates input expressions on join result (reuse local_state.aggregate_executor)
+    // local_state.aggregate_executor.Execute(join_result, local_state.aggregate_input_chunk);
 
-    // Append aggregates to the result
-    for (idx_t col_idx = 0; col_idx < aggregate_cols; col_idx++) {
-        result_types.push_back(aggregates.data[col_idx].GetType());
-    }
+    // // Add to aggregate hash table
+    // vector<idx_t> no_filter; // empty filter vector
+    // global_state.hash_table->AddChunk(groups_chunk, local_state.aggregate_input_chunk, no_filter);
 
-    chunk.InitializeEmpty(result_types);
-    chunk.SetCardinality(input.size());
+    // // Output columns: joined columns + aggregates after grouping
+    // // For simplicity, output the joined columns only here or aggregated output in GetData()
 
-    // Set data for input columns
-    for (idx_t col_idx = 0; col_idx < input_cols; col_idx++) {
-        chunk.data[col_idx].Reference(input.data[col_idx]);
-    }
-
-    // Set data for aggregates
-    for (idx_t col_idx = 0; col_idx < aggregate_cols; col_idx++) {
-        chunk.data[input_cols + col_idx].Reference(aggregates.data[col_idx]);
-    }
+    // // Just forward joined columns for now
+    // chunk.Reference(join_result);
 
     return OperatorResultType::NEED_MORE_INPUT;
+
 }
 
 unique_ptr<GlobalSourceState> PhysicalGroupJoin::GetGlobalSourceState(ClientContext &context) const {
@@ -251,8 +268,22 @@ unique_ptr<LocalSourceState> PhysicalGroupJoin::GetLocalSourceState(ExecutionCon
 
 SourceResultType PhysicalGroupJoin::GetData(ExecutionContext &context, DataChunk &chunk,
                                             OperatorSourceInput &input) const {
-    return SourceResultType::FINISHED;
+    auto &global_state = sink_state->Cast<GroupJoinGlobalSinkState>();
+
+    // if (!input.state) {
+    //     input.state = make_uniq<PhysicalGroupJoinAggregate>();
+    // }
+    // auto &scan_state = input.state.Cast<AggregateHTScanState>();
+
+    // idx_t count = global_state.hash_table->ScanGrouped(scan_state, chunk);
+
+    // if (count == 0) {
+    //     return SourceResultType::FINISHED;
+    // }
+    // chunk.SetCardinality(count);
+    return SourceResultType::HAVE_MORE_OUTPUT;
 }
+
 
 InsertionOrderPreservingMap<string> PhysicalGroupJoin::ParamsToString() const {
     InsertionOrderPreservingMap<string> result;
@@ -285,3 +316,4 @@ InsertionOrderPreservingMap<string> PhysicalGroupJoin::ParamsToString() const {
 }
 
 } // namespace duckdb
+

@@ -25,6 +25,14 @@
 
 namespace duckdb {
 
+    static void RewriteJoinCondition1(Expression &expr, idx_t offset) {
+        if (expr.type == ExpressionType::BOUND_REF) {
+            auto &ref = expr.Cast<BoundReferenceExpression>();
+            ref.index += offset;
+        }
+        ExpressionIterator::EnumerateChildren(expr, [&](Expression &child) { RewriteJoinCondition1(child, offset); });
+    }
+
 unique_ptr<PhysicalOperator> PhysicalPlanGenerator::PlanGroupJoin(LogicalAggregate &op) {
     // Visit the children
     auto &join = op.children[0]->children[0]->Cast<LogicalComparisonJoin>();
@@ -46,17 +54,18 @@ unique_ptr<PhysicalOperator> PhysicalPlanGenerator::PlanGroupJoin(LogicalAggrega
     unique_ptr<PhysicalOperator> plan;
 
     for (auto &cond : join.conditions) {
-        RewriteJoinCondition(*cond.right, left->types.size());
+        RewriteJoinCondition1(*cond.right, left->types.size());
     }
     auto condition = JoinCondition::CreateExpression(std::move(join.conditions));
 
-    std::cout << "Group Join Everytime" << std::endl;
+    std::cout << "Group Join Everytime 1" << std::endl;
 
     // Pass the grouping and aggregate expressions from the LogicalAggregate operator
     plan = make_uniq<PhysicalGroupJoin>(op, std::move(left), std::move(right), std::move(condition),
                                         join.join_type, op.estimated_cardinality, op.groups, op.expressions);
-
+    std::cout << "Group Join Everytime 2" << std::endl;
     return plan;
 }
+
 
 } // namespace duckdb

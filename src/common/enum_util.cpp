@@ -5511,6 +5511,9 @@ const char* EnumUtil::ToChars<PhysicalOperatorType>(PhysicalOperatorType value) 
 		return "UPDATE_EXTENSIONS";
 	case PhysicalOperatorType::CREATE_SECRET:
 		return "CREATE_SECRET";
+	case PhysicalOperatorType::GROUPJOIN_GROUP_BY:
+		return "GROUPJOIN_GROUP_BY";
+
 	default:
 		throw NotImplementedException(StringUtil::Format("Enum value: '%d' not implemented in ToChars<PhysicalOperatorType>", value));
 	}

@@ -151,6 +151,7 @@ protected:
 	//! and only updates the global counter when the cache value exceeds a threshold.
 	//! Therefore, the statistics may have slight differences from the actual memory usage.
 	mutable MemoryUsage memory_usage;
+	
 };
 
 } // namespace duckdb

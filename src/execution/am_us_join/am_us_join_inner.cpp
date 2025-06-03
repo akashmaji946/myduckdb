@@ -168,10 +168,12 @@ idx_t AmUsJoinComparisonSwitch(Vector &left, Vector &right, idx_t left_size, idx
 idx_t AmUsJoinInner::Perform(idx_t &lpos, idx_t &rpos, DataChunk &left_conditions, DataChunk &right_conditions,
                                    SelectionVector &lvector, SelectionVector &rvector,
                                    const vector<JoinCondition> &conditions) {
+
 	D_ASSERT(left_conditions.ColumnCount() == right_conditions.ColumnCount());
 	if (lpos >= left_conditions.size() || rpos >= right_conditions.size()) {
 		return 0;
 	}
+	
 	// for the first condition, lvector and rvector are not set yet
 	// we initialize them using the InitialAmUsJoin
 	idx_t match_count = AmUsJoinComparisonSwitch<InitialAmUsJoin>(
