@@ -29,6 +29,9 @@ struct FlushMoveState;
    as input the set of groups and the types of the aggregates to compute and
    stores them in the HT. It uses linear probing for collision resolution.
 */
+struct GroupedAggregateHashTableScanState {
+	idx_t current_offset = 0;
+};
 
 class GroupedAggregateHashTable : public BaseAggregateHashTable {
 public:
@@ -158,6 +161,132 @@ private:
 
 	//! Verify the pointer table of the HT
 	void Verify();
+
+	public:
+
+	// Finds the partition index and local offset inside that partition for a global offset
+		static void GetPartitionAndLocalOffset(PartitionedTupleData &data, idx_t global_offset,
+											idx_t &partition_idx, idx_t &local_offset) {
+			partition_idx = 0;
+			idx_t running_offset = 0;
+
+			for (idx_t i = 0; i < data.PartitionCount(); i++) {
+				auto &partition = *data.GetPartitions()[i]; // Dereference unique_ptr to get TupleDataCollection&
+				idx_t partition_count = partition.Count();  // Use . not -> here
+				if (global_offset < running_offset + partition_count) {
+					partition_idx = i;
+					local_offset = global_offset - running_offset;
+					return;
+				}
+				running_offset += partition_count;
+			}
+			// If offset beyond total count (should not happen), assign to last partition
+			partition_idx = data.PartitionCount() - 1;
+			local_offset = data.GetPartitions()[partition_idx]->Count();
+		}
+
+static void FetchRowFromPartition(TupleDataCollection &partition, row_t row_id, DataChunk &result) {
+	// 1. Create a vector of row locations
+	Vector row_locations(LogicalType::ROW_TYPE, 1);
+	FlatVector::GetData<row_t>(row_locations)[0] = row_id;
+
+	// 2. Selection vector to choose the single row
+	SelectionVector sel(1);
+	sel.set_index(0, 0);
+
+	// 3. Initialize the result chunk if needed
+	if (result.ColumnCount() == 0) {
+		partition.InitializeChunk(result);
+	}
+
+	// 4. Empty cache for potential list/struct casts
+	vector<unique_ptr<Vector>> cached_cast_vectors;
+
+	// 5. Gather the row
+	partition.Gather(row_locations, sel, 1, result, sel, cached_cast_vectors);
+}
+
+void FetchRowFromPartition(TupleDataCollection &partition, idx_t local_offset, DataChunk &result, idx_t result_row_idx) {
+    TupleDataParallelScanState gstate;
+    TupleDataLocalScanState lstate;
+    
+    // Initialize parallel scan state
+    partition.InitializeScan(gstate, TupleDataPinProperties::UNPIN_AFTER_DONE);
+    
+    // Initialize local scan state indexes
+    lstate.segment_index = 0;
+    lstate.chunk_index = 0;
+    
+    idx_t rows_scanned = 0;
+    DataChunk chunk;
+    
+    // Loop until we find the chunk containing local_offset
+    while (true) {
+        bool has_data = partition.Scan(gstate, lstate, chunk);
+        if (!has_data) {
+            throw InternalException("Failed to scan enough rows to reach local_offset");
+        }
+
+        idx_t chunk_size = chunk.size();
+
+        if (rows_scanned + chunk_size > local_offset) {
+            // The desired row is in this chunk
+            idx_t index_in_chunk = local_offset - rows_scanned;
+
+            // Copy single row from chunk to result at result_row_idx
+            for (idx_t col = 0; col < chunk.ColumnCount(); col++) {
+                result.data[col].SetValue(result_row_idx, chunk.data[col].GetValue(index_in_chunk));
+            }
+            return;
+        }
+        rows_scanned += chunk_size;
+    }
+}
+
+
+
+idx_t Scan(DataChunk &result, GroupedAggregateHashTableScanState &state, idx_t max_rows) {
+	auto &data = *partitioned_data;
+	idx_t total_count = data.Count();
+
+	if (state.current_offset >= total_count) {
+		return 0; // No more rows to scan
+	}
+
+	idx_t rows_to_scan = std::min(max_rows, total_count - state.current_offset);
+	idx_t rows_scanned = 0;
+	result.Reset();
+
+	// Start scan from the appropriate partition and offset
+	idx_t partition_idx, local_offset;
+	GetPartitionAndLocalOffset(data, state.current_offset, partition_idx, local_offset);
+
+	auto &partitions = data.GetPartitions();
+
+	while (rows_scanned < rows_to_scan && partition_idx < partitions.size()) {
+		auto &partition = *partitions[partition_idx];
+		idx_t partition_count = partition.Count();
+
+		while (local_offset < partition_count && rows_scanned < rows_to_scan) {
+			// Fetch a single row into result
+			FetchRowFromPartition(partition, local_offset, result, rows_scanned);
+
+			local_offset++;
+			state.current_offset++;
+			rows_scanned++;
+		}
+
+		// Move to the next partition
+		partition_idx++;
+		local_offset = 0;
+	}
+
+	// Set the result cardinality
+	result.SetCardinality(rows_scanned);
+	return rows_scanned;
+}
+
+
 };
 
 } // namespace duckdb
