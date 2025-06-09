@@ -30,6 +30,7 @@ public:
         vector<unique_ptr<Expression>> &groups,
         vector<unique_ptr<Expression>> &aggregates
     );
+	virtual ~PhysicalGroupJoin();
 
     unique_ptr<Expression> condition;
     vector<unique_ptr<Expression>> groups;
@@ -40,7 +41,7 @@ public:
 	unique_ptr<OperatorState> GetOperatorState(ExecutionContext &context) const override;
 
 	bool ParallelOperator() const override {
-		return true;
+		return false;
 	}
 
 protected:
@@ -56,10 +57,10 @@ public:
 	SourceResultType GetData(ExecutionContext &context, DataChunk &chunk, OperatorSourceInput &input) const override;
 
 	bool IsSource() const override {
-		return PropagatesBuildSide(join_type);
+		return true;
 	}
 	bool ParallelSource() const override {
-		return true;
+		return false;
 	}
 
 public:
@@ -79,6 +80,9 @@ public:
 
 public:
 	InsertionOrderPreservingMap<string> ParamsToString() const override;
+	bool SinkOrderDependent() const override;
+	void BuildPipelines(Pipeline &current, MetaPipeline &meta_pipeline) override;
+
 };
 
 } // namespace duckdb

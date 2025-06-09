@@ -37,15 +37,19 @@ PipelineExecutor::PipelineExecutor(ClientContext &context_p, Pipeline &pipeline_
 		chunk->Initialize(Allocator::Get(context.client), prev_operator.GetTypes());
 		intermediate_chunks.push_back(std::move(chunk));
 
+		std::cout << "I am here\n";
 		auto op_state = current_operator.GetOperatorState(context);
 		intermediate_states.push_back(std::move(op_state));
-
+		std::cout << "I am not here\n";
+		
 		if (current_operator.IsSink() && current_operator.sink_state->state == SinkFinalizeType::NO_OUTPUT_POSSIBLE) {
 			// one of the operators has already figured out no output is possible
 			// we can skip executing the pipeline
 			FinishProcessing();
 		}
+		std::cout << "I am here:" << i << std::endl;
 	}
+	std::cout << "I am OUT:"<< std::endl;
 	InitializeChunk(final_chunk);
 }
 
@@ -169,12 +173,12 @@ SinkNextBatchType PipelineExecutor::NextBatch(duckdb::DataChunk &source_chunk) {
 PipelineExecuteResult PipelineExecutor::Execute(idx_t max_chunks) {
 	D_ASSERT(pipeline.sink);
 
-	// std::cout << "***************Printing all the operators:\n";
+	std::cout << "***************Printing all the operators:**********\n";
 	for (const auto& op_ref : pipeline.operators) {
         const auto& op = op_ref.get();
         // std::cout << op.GetName() << std::endl;
     }
-	// std::cout << "*********************************************\n";
+	std::cout << "*********************************************************\n";
 
 
 	auto &source_chunk = pipeline.operators.empty() ? final_chunk : *intermediate_chunks[0];
@@ -212,6 +216,7 @@ PipelineExecuteResult PipelineExecutor::Execute(idx_t max_chunks) {
 				// "Regular" path: fetch a chunk from the source and push it through the pipeline
 				source_chunk.Reset();
 				source_result = FetchFromSource(source_chunk);
+				std::cout << "Exitting 1\n";
 				if (source_result == SourceResultType::BLOCKED) {
 					return PipelineExecuteResult::INTERRUPTED;
 				}
@@ -234,6 +239,7 @@ PipelineExecuteResult PipelineExecutor::Execute(idx_t max_chunks) {
 			}
 
 			result = ExecutePushInternal(source_chunk);
+			std::cout << "Exitting 2\n";
 		} else {
 			throw InternalException("Unexpected state reached in pipeline executor");
 		}
@@ -253,6 +259,7 @@ PipelineExecuteResult PipelineExecutor::Execute(idx_t max_chunks) {
 		return PipelineExecuteResult::NOT_FINISHED;
 	}
 
+	std::cout << "Exitting\n";
 	return PushFinalize();
 }
 
@@ -317,7 +324,7 @@ OperatorResultType PipelineExecutor::ExecutePushInternal(DataChunk &input, idx_t
 			OperatorSinkInput sink_input {*pipeline.sink->sink_state, *local_sink_state, interrupt_state};
 
 			auto sink_result = Sink(sink_chunk, sink_input);
-
+			std::cout << "STD PUSH INTERNAL\n";
 			EndOperator(*pipeline.sink, nullptr);
 
 			if (sink_result == SinkResultType::BLOCKED) {
@@ -517,13 +524,16 @@ SourceResultType PipelineExecutor::FetchFromSource(DataChunk &result) {
 	D_ASSERT(res != SourceResultType::BLOCKED || result.size() == 0);
 
 	EndOperator(*pipeline.source, &result);
-
+	// std::cout << "ENDING:" << (*pipeline.source).GetName() << std::endl;
+	// std::cout << result.ToString() << std::endl;
 	return res;
 }
 
 void PipelineExecutor::InitializeChunk(DataChunk &chunk) {
+	std::cout << "Inside InitializeChunk()" << std::endl;
 	auto &last_op = pipeline.operators.empty() ? *pipeline.source : pipeline.operators.back().get();
 	chunk.Initialize(Allocator::DefaultAllocator(), last_op.GetTypes());
+	std::cout << "Inside InitializeChunk() END" << std::endl;
 }
 
 void PipelineExecutor::StartOperator(PhysicalOperator &op) {
@@ -538,9 +548,12 @@ void PipelineExecutor::EndOperator(PhysicalOperator &op, optional_ptr<DataChunk>
 
 	if (chunk) {
 		chunk->Verify();
+		std::cout << ">>ENDING--" << op.GetName()  << std::endl;
+		std::cout << chunk->ToString() << std::endl;
 	}
 
-	// std::cout << "ENDING================================" << op.GetName()  << std::endl;
+	// std::cout << ">>ENDING ===================" << op.GetName()  << std::endl;
+	// std::cout << chunk->ToString() << std::endl;
 }
 
 } // namespace duckdb

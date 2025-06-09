@@ -5,6 +5,8 @@
 #include "duckdb/common/types/row/tuple_data_collection.hpp"
 #include "duckdb/common/uhugeint.hpp"
 
+#include <iostream>
+
 namespace duckdb {
 
 using ValidityBytes = TupleDataLayout::ValidityBytes;
@@ -1078,6 +1080,9 @@ TupleDataScatterFunction TupleDataCollection::GetScatterFunction(const LogicalTy
 void TupleDataCollection::Gather(Vector &row_locations, const SelectionVector &scan_sel, const idx_t scan_count,
                                  DataChunk &result, const SelectionVector &target_sel,
                                  vector<unique_ptr<Vector>> &cached_cast_vectors) const {
+
+
+
 	D_ASSERT(result.ColumnCount() == layout.ColumnCount());
 	vector<column_t> column_ids;
 	column_ids.reserve(layout.ColumnCount());
@@ -1097,14 +1102,44 @@ void TupleDataCollection::Gather(Vector &row_locations, const SelectionVector &s
 	}
 }
 
+// void TupleDataCollection::Gather(Vector &row_locations, const SelectionVector &scan_sel, const idx_t scan_count,
+//                                  const column_t column_id, Vector &result, const SelectionVector &target_sel,
+//                                  optional_ptr<Vector> cached_cast_vector) const {
+// 	D_ASSERT(!cached_cast_vector || FlatVector::Validity(*cached_cast_vector).AllValid()); // ResetCachedCastVectors
+// 	const auto &gather_function = gather_functions[column_id];
+// 	gather_function.function(layout, row_locations, column_id, scan_sel, scan_count, result, target_sel,
+// 	                         cached_cast_vector, gather_function.child_functions);
+// 	Vector::Verify(result, target_sel, scan_count);
+// }
+
 void TupleDataCollection::Gather(Vector &row_locations, const SelectionVector &scan_sel, const idx_t scan_count,
                                  const column_t column_id, Vector &result, const SelectionVector &target_sel,
                                  optional_ptr<Vector> cached_cast_vector) const {
-	D_ASSERT(!cached_cast_vector || FlatVector::Validity(*cached_cast_vector).AllValid()); // ResetCachedCastVectors
-	const auto &gather_function = gather_functions[column_id];
-	gather_function.function(layout, row_locations, column_id, scan_sel, scan_count, result, target_sel,
-	                         cached_cast_vector, gather_function.child_functions);
-	Vector::Verify(result, target_sel, scan_count);
+    // Verify cached_cast_vector validity
+    D_ASSERT(!cached_cast_vector || FlatVector::Validity(*cached_cast_vector).AllValid());
+
+    // Verify column_id
+    if (column_id >= layout.ColumnCount()) {
+        throw InternalException("Invalid column_id: " + std::to_string(column_id));
+    }
+
+    // Verify gather_function initialization
+    const auto &gather_function = gather_functions[column_id];
+    if (!gather_function.function) {
+        throw InternalException("Gather function not initialized for column_id: " + std::to_string(column_id));
+    }
+
+    // Debug inputs
+    std::cout << "Row locations: " << row_locations.ToString() << std::endl;
+    std::cout << "Scan count: " << scan_count << std::endl;
+    std::cout << "Target selection vector: " << target_sel.ToString() << std::endl;
+
+    // Call gather_function
+    gather_function.function(layout, row_locations, column_id, scan_sel, scan_count, result, target_sel,
+                             cached_cast_vector, gather_function.child_functions);
+
+    // Verify result
+    Vector::Verify(result, target_sel, scan_count);
 }
 
 template <class T>
