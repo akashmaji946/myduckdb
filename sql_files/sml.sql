@@ -27,18 +27,7 @@ INSERT INTO enrol (sid, cid) VALUES
     (105, 1),
     (108, 1);
 
--- Query 01
-SELECT stud.sid, enrol.cid 
-FROM stud JOIN enrol 
-ON stud.sid = enrol.sid;
 
--- Query 02
-SELECT stud.sid, enrol.cid 
-FROM stud JOIN enrol 
-ON stud.sid = enrol.sid 
-WHERE stud.sage > 25;
-
--- Query 03
 SELECT enrol.cid, COUNT(stud.sid) AS student_count
 FROM stud
 JOIN enrol ON stud.sid = enrol.sid

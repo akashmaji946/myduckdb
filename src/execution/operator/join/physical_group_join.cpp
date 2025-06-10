@@ -508,9 +508,6 @@ SinkFinalizeType PhysicalGroupJoin::Finalize(Pipeline &pipeline, Event &event, C
     std::cout << children[1]->GetName() << std::endl;
 
 
-    vector<LogicalType> join_types = left_types;
-    join_types.insert(join_types.end(), right_types.begin(), right_types.end());
-
     DataChunk left_chunk, right_chunk;
 
     global_state.left_data.InitializeScan();
@@ -522,6 +519,14 @@ SinkFinalizeType PhysicalGroupJoin::Finalize(Pipeline &pipeline, Event &event, C
         while (global_state.right_data.Scan(right_chunk)) {
 
             DataChunk joined_chunk;
+            vector<LogicalType> join_types;
+            // Use the actual types from left_chunk and right_chunk
+            for (idx_t col = 0; col < left_chunk.ColumnCount(); ++col) {
+                join_types.push_back(left_chunk.data[col].GetType());
+            }
+            for (idx_t col = 0; col < right_chunk.ColumnCount(); ++col) {
+                join_types.push_back(right_chunk.data[col].GetType());
+            }
             joined_chunk.Initialize(Allocator::Get(context), join_types);
             joined_chunk.SetCardinality(1);
 
@@ -541,7 +546,15 @@ SinkFinalizeType PhysicalGroupJoin::Finalize(Pipeline &pipeline, Event &event, C
                     // Manually copy single row from right_chunk into joined_chunk
                     for (idx_t col = 0; col < right_chunk.ColumnCount(); ++col) {
                         idx_t out_col = left_chunk.ColumnCount() + col;
+
+                        std::cout << ">>>>"<< out_col << std::endl;
+                        std::cout << joined_chunk.ColumnCount() << std::endl;
+                        std::cout << ">>>>"<< col << std::endl;
+                         std::cout << right_chunk.ColumnCount() << std::endl;
+                        std::cout << ">>>>"<< j << std::endl;
+
                         joined_chunk.data[out_col].SetValue(0, right_chunk.data[col].GetValue(j));
+
                     }
 
                     std::cout << "_________JOINED CHUNK:___________" << std::endl;
@@ -881,17 +894,34 @@ unique_ptr<LocalSourceState> PhysicalGroupJoin::GetLocalSourceState(ExecutionCon
 //     }
 // }
 
-SourceResultType PhysicalGroupJoin::GetData(ExecutionContext &context, DataChunk &chunk, OperatorSourceInput &input) const {
-    // Temporary fix: Return a chunk with a single UINT8 value
-    std::cout << "Returning temporary result with UINT8 value\n";
-    
-    // Define the schema for the result (single column of type UINT8)
-    vector<LogicalType> result_types = {LogicalType::USMALLINT};
-    chunk.Initialize(Allocator::Get(context.client), result_types);
 
-    // Set the value 42 (example UINT8 value) in the first row of the chunk
-    chunk.SetCardinality(1); // Set the chunk size to 1 row
-    chunk.data[0].SetValue(0, Value::UINTEGER(42));
+
+SourceResultType PhysicalGroupJoin::GetData(ExecutionContext &context, DataChunk &chunk, OperatorSourceInput &input) const {
+    
+    std::cout << "Returning temporary result with two rows of 0s\n";
+    std::cout << chunk.size() << " = " << chunk.ColumnCount() << std::endl;
+
+    // Define the schema for the result (single column of type UINT8)
+    for (idx_t i = 0; i < chunk.ColumnCount(); ++i) {
+        std::cout << chunk.data[i].GetType().ToString() << std::endl;
+    }
+    vector<LogicalType> result_types = {LogicalType::USMALLINT};
+    // chunk.Initialize(Allocator::Get(context.client), result_types);
+
+     for (idx_t i = 0; i < chunk.ColumnCount(); ++i) {
+        std::cout << chunk.data[i].GetType().ToString() << std::endl;
+    }
+
+    // Set the cardinality to 2 rows
+    chunk.SetCardinality(2);
+     std::cout << chunk.size() << " = " << chunk.ColumnCount() << std::endl;
+    // Populate the chunk with 0s
+    for (idx_t row_idx = 0; row_idx < chunk.size(); row_idx++) {
+        for(idx_t col_idx = 0; col_idx < chunk.ColumnCount(); col_idx++){
+            std::cout << row_idx << ":" << col_idx << std::endl;
+            chunk.data[col_idx].SetValue(row_idx, Value::UINTEGER(col_idx * 100 + 50));
+        } 
+    }
 
     // Print the chunk for debugging
     std::cout << "Chunk contents:\n" << chunk.ToString() << std::endl;
