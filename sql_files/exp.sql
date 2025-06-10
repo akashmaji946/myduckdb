@@ -45,7 +45,7 @@ INSERT INTO B (k, w) VALUES
 -- 200 180 200
 
 
-SELECT A.k, SUM(A.v) AS student_count
+SELECT A.k, SUM(A.v) AS summ
 FROM A
 JOIN B ON A.k = B.k
 GROUP BY A.k;
