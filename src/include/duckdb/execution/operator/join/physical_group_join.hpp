@@ -17,6 +17,9 @@ namespace duckdb {
 //! RHS.
 class PhysicalGroupJoin : public PhysicalJoin {
 public:
+	 static std::unordered_map<int, std::pair<int, int>> aggregation_map;
+	 static std::unordered_map<int, int> aggregation_map2;
+
 	static constexpr const PhysicalOperatorType TYPE = PhysicalOperatorType::GROUP_JOIN;
 
 public:

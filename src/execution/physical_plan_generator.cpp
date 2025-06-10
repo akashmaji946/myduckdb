@@ -91,12 +91,10 @@ unique_ptr<PhysicalOperator> PhysicalPlanGenerator::CreatePlan(LogicalOperator &
 	
 	if(canReplaceByGroupJoin(op)){
 		std::cout << "Group Join Candidate Found !" << std::endl;
-
 		plan= PlanGroupJoin(op.Cast<LogicalAggregate>());
 		plan->estimated_cardinality = op.estimated_cardinality;
 		return plan;
 	}
-
 
 	switch (op.type) {
 	case LogicalOperatorType::LOGICAL_GET:

@@ -26,25 +26,52 @@ PhysicalProjection::PhysicalProjection(vector<LogicalType> types, vector<unique_
       select_list(std::move(select_list)) {
 }
 
+// OperatorResultType PhysicalProjection::Execute(ExecutionContext &context, DataChunk &input, DataChunk &chunk,
+//                                                GlobalOperatorState &gstate, OperatorState &state_p) const {
+// 	auto &state = state_p.Cast<ProjectionState>();
+// 	// chunk.Reset();							
+// 	// chunk.Initialize(Allocator::Get(context.client), input.GetTypes());
+// 	state.executor.Execute(input, chunk);
+
+// 	std::cout << "Projection Input Chunk:=>" << input.ToString() << std::endl;
+// 	std::cout << "Projection Output Chunk:=>" << chunk.ToString() << std::endl;
+// 	std::cout << "Input Chunk Types:\n";
+// 	for (auto &type : input.GetTypes()) {
+// 		std::cout << type.ToString() << std::endl;
+// 	}
+// 	std::cout << "Output Chunk Types:\n";
+// 	for (auto &type : chunk.GetTypes()) {
+// 		std::cout << type.ToString() << std::endl;
+// 	}											
+// 	// std::cout << "=================================I am called=============================================\n";
+// 	return OperatorResultType::NEED_MORE_INPUT;
+// }
+
 OperatorResultType PhysicalProjection::Execute(ExecutionContext &context, DataChunk &input, DataChunk &chunk,
                                                GlobalOperatorState &gstate, OperatorState &state_p) const {
-	auto &state = state_p.Cast<ProjectionState>();
-	chunk.Reset();							
-	chunk.Initialize(Allocator::Get(context.client), input.GetTypes());
-	state.executor.Execute(input, chunk);
+    auto &state = state_p.Cast<ProjectionState>();
 
-	std::cout << "Projection Input Chunk:=>" << input.ToString() << std::endl;
-	std::cout << "Projection Output Chunk:=>" << chunk.ToString() << std::endl;
-	std::cout << "Input Chunk Types:\n";
-	for (auto &type : input.GetTypes()) {
-		std::cout << type.ToString() << std::endl;
-	}
-	std::cout << "Output Chunk Types:\n";
-	for (auto &type : chunk.GetTypes()) {
-		std::cout << type.ToString() << std::endl;
-	}											
-	// std::cout << "=================================I am called=============================================\n";
-	return OperatorResultType::NEED_MORE_INPUT;
+    // Reset the output chunk
+    chunk.Reset();
+
+    // Initialize the output chunk with the same schema as the input chunk
+    // chunk.Initialize(Allocator::Get(context.client), input.GetTypes());
+	chunk.SetCardinality(input.size());
+
+
+    // Copy values from the input chunk to the output chunk
+    for (idx_t col_idx = 0; col_idx < input.ColumnCount(); ++col_idx) {
+        for (idx_t row_idx = 0; row_idx < input.size(); ++row_idx) {
+            chunk.data[col_idx].SetValue(row_idx, input.data[col_idx].GetValue(row_idx));
+        }
+    }
+
+    // Debug the input and output chunks
+    std::cout << "Projection Input Chunk:\n" << input.ToString() << std::endl;
+    std::cout << "Projection Output Chunk:\n" << chunk.ToString() << std::endl;
+
+	chunk.Verify();
+    return OperatorResultType::NEED_MORE_INPUT;
 }
 
 unique_ptr<OperatorState> PhysicalProjection::GetOperatorState(ExecutionContext &context) const {

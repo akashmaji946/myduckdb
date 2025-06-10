@@ -548,7 +548,7 @@ void PipelineExecutor::EndOperator(PhysicalOperator &op, optional_ptr<DataChunk>
 
 	if (chunk) {
 		chunk->Verify();
-		std::cout << ">>ENDING--" << op.GetName()  << std::endl;
+		std::cout << ">>ENDING-->" << op.GetName()  << std::endl;
 		std::cout << chunk->ToString() << std::endl;
 	}
 

@@ -9,6 +9,8 @@ class ChunkCollection {
 public:
 	ChunkCollection() : total_chunk_count(0) {}
 
+	map<DataChunk*, bool> allocated;
+
 	// Append a new chunk (copies the data)
 	void Append(const DataChunk &chunk) {
 		auto new_chunk = make_uniq<DataChunk>();
@@ -33,20 +35,19 @@ public:
 
 	// Scan the next chunk
 	bool Scan(DataChunk &out_chunk) {
+
 		while (scan_chunk_idx < chunks.size()) {
 			auto &chunk = *chunks[scan_chunk_idx];
 			if (scan_pos < chunk.size()) {
 				idx_t remaining = chunk.size() - scan_pos;
 				idx_t fetch_count = MinValue<idx_t>(STANDARD_VECTOR_SIZE, remaining);
 
-				// out_chunk.Initialize(chunk.GetTypes());
-				// for (idx_t col = 0; col < chunk.ColumnCount(); ++col) {
-				// 	auto &src = chunk.data[col];
-				// 	auto &dst = out_chunk.data[col];
-				// 	src.Slice(scan_pos, fetch_count).Copy(dst);
-				// }
-				// out_chunk.SetCardinality(fetch_count);
-                out_chunk.Initialize(Allocator::DefaultAllocator(), chunk.GetTypes(), STANDARD_VECTOR_SIZE);
+				DataChunk* dc = &out_chunk;
+				if(allocated.find(dc) == allocated.end()){
+					out_chunk.Initialize(Allocator::DefaultAllocator(), chunk.GetTypes(), STANDARD_VECTOR_SIZE);
+					allocated[dc] = true;
+				}
+                	
 
                 for (idx_t col = 0; col < chunk.ColumnCount(); ++col) {
                     auto &src = chunk.data[col];

@@ -1,12 +1,39 @@
 #include "duckdb/execution/operator/projection/physical_projection.hpp"
 #include "duckdb/execution/physical_plan_generator.hpp"
 #include "duckdb/planner/operator/logical_projection.hpp"
+#include "duckdb/planner/operator/logical_aggregate.hpp"
 #include "duckdb/planner/expression/bound_reference_expression.hpp"
 #include<iostream>
 namespace duckdb {
 
+bool canReplaceByGroupJoin1(LogicalOperator &op){
+	if(op.type != LogicalOperatorType::LOGICAL_AGGREGATE_AND_GROUP_BY) return false;
+	auto &groupby = op.Cast<LogicalAggregate>();
+	if(groupby.groups.size() > 0 && groupby.children[0]->children[0]->type == LogicalOperatorType::LOGICAL_COMPARISON_JOIN){
+		return true;
+	}
+	return false;
+}
+
 unique_ptr<PhysicalOperator> PhysicalPlanGenerator::CreatePlan(LogicalProjection &op) {
-	D_ASSERT(op.children.size() == 1);
+		D_ASSERT(op.children.size() == 1);
+
+	    if (canReplaceByGroupJoin1(*op.children[0])) {
+        std::cout << ">>>>>>Group Join Candidate Found!<<<<<<" << std::endl;
+
+        // Generate the GroupJoin plan
+        auto group_join_plan = PlanGroupJoin((*op.children[0]).Cast<LogicalAggregate>());
+        group_join_plan->estimated_cardinality = (*op.children[0]).estimated_cardinality;
+
+        // Ensure the Projection operator uses the same schema as GroupJoin
+        auto projection_types = group_join_plan->types; // Use the same types as GroupJoin
+        auto projection_plan = make_uniq<PhysicalProjection>(op.types, vector<unique_ptr<Expression>>(), op.estimated_cardinality);
+
+        // Connect the Projection operator to the GroupJoin output
+        projection_plan->children.push_back(std::move(group_join_plan));
+        return projection_plan;
+    }
+
 	// std::cout << "=======================Showing children for " << op.GetName() << std::endl;
 	for(auto &child:  op.children){
 			// std::cout << child->GetName () << std::endl;
