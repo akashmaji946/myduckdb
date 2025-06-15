@@ -9,6 +9,23 @@
 #include "duckdb/common/types/chunk_collection.hpp"
 #include "duckdb/planner/expression/bound_aggregate_expression.hpp"
 #include "duckdb/parallel/meta_pipeline.hpp"
+#include "duckdb/common/types/row/partitioned_tuple_data.hpp"
+#include "duckdb/common/types/row/tuple_data_collection.hpp"
+#include "duckdb/common/types/row/tuple_data_allocator.hpp"
+#include "duckdb/execution/aggregate_hashtable.hpp"
+
+#include "duckdb/catalog/catalog_entry/aggregate_function_catalog_entry.hpp"
+#include "duckdb/common/algorithm.hpp"
+#include "duckdb/common/exception.hpp"
+#include "duckdb/common/radix_partitioning.hpp"
+#include "duckdb/common/row_operations/row_operations.hpp"
+#include "duckdb/common/types/null_value.hpp"
+#include "duckdb/common/types/row/tuple_data_iterator.hpp"
+#include "duckdb/common/vector_operations/vector_operations.hpp"
+#include "duckdb/execution/expression_executor.hpp"
+#include "duckdb/execution/ht_entry.hpp"
+#include "duckdb/planner/expression/bound_aggregate_expression.hpp"
+
 
 #include <iostream>
 
@@ -33,9 +50,10 @@ PhysicalGroupJoin::PhysicalGroupJoin(LogicalOperator &op, unique_ptr<PhysicalOpe
     D_ASSERT(join_type != JoinType::SINGLE);
 }
 
-std::unordered_map<int, std::pair<int, int>> PhysicalGroupJoin::aggregation_map;
+std::unordered_map<int, std::pair<int, float>> PhysicalGroupJoin::aggregation_map;
 std::unordered_map<int, int> PhysicalGroupJoin::aggregation_map2;
 
+// std::unordered_map<std::vector<Value>, std::vector<Value>, VectorHash> aggregation_map;
 
 PhysicalGroupJoin::~PhysicalGroupJoin() = default;
 
@@ -259,12 +277,12 @@ SinkResultType PhysicalGroupJoin::Sink(ExecutionContext &context, DataChunk &chu
     auto &left_types = children[0]->types;
     auto &right_types = children[1]->types;
     if (input_types == left_types) {
-        std::cout << "Appending chunk to LEFT table" << std::endl;
-        std::cout << chunk.ToString() << std::endl;
+        // std::cout << "Appending chunk to LEFT table" << std::endl;
+        // std::cout << chunk.ToString() << std::endl;
         global_state.left_data.Append(chunk);
     } else if (input_types == right_types) {
-        std::cout << "Appending chunk to RIGHT table" << std::endl;
-        std::cout << chunk.ToString() << std::endl;
+        // std::cout << "Appending chunk to RIGHT table" << std::endl;
+        // std::cout << chunk.ToString() << std::endl;
         global_state.right_data.Append(chunk);
     } else {
         std::cout << "ERROR: input chunk types do not match any child" << std::endl;
@@ -275,221 +293,11 @@ SinkResultType PhysicalGroupJoin::Sink(ExecutionContext &context, DataChunk &chu
 }
 
 
-// SinkFinalizeType PhysicalGroupJoin::Finalize(Pipeline &pipeline, Event &event, ClientContext &context, OperatorSinkFinalizeInput &input) const {
-
-//     auto &global_state = input.global_state.Cast<GroupJoinGlobalSinkState>();
-//     if (global_state.finalized) {
-//         return SinkFinalizeType::READY;
-//     }
-//     global_state.finalized = true;
-
-//     std::cout << "PhysicalGroupJoin::Finalize — Performing nested loop join and group-by" << std::endl;
-
-//     const auto &left_types = children[0]->types;
-//     const auto &right_types = children[1]->types;
-
-//     std::cout << children[0]->GetName() << std::endl;
-//     std::cout << children[1]->GetName() << std::endl;
-
-
-//     DataChunk left_chunk, right_chunk;
-
-//     global_state.left_data.InitializeScan();
-
-//     std::cout << "Just outside while\n";
-//     while (global_state.left_data.Scan(left_chunk)) {
-//         std::cout << "Just inside while\n";
-//         global_state.right_data.InitializeScan();
-//         while (global_state.right_data.Scan(right_chunk)) {
-
-//             DataChunk joined_chunk;
-//             vector<LogicalType> join_types;
-//             // Use the actual types from left_chunk and right_chunk
-//             for (idx_t col = 0; col < left_chunk.ColumnCount(); ++col) {
-//                 join_types.push_back(left_chunk.data[col].GetType());
-//             }
-//             for (idx_t col = 0; col < right_chunk.ColumnCount(); ++col) {
-//                 join_types.push_back(right_chunk.data[col].GetType());
-//             }
-//             joined_chunk.Initialize(Allocator::Get(context), join_types);
-//             joined_chunk.SetCardinality(1);
-
-//             std::cout << "________________________Left Chunk_____________________________________" << std::endl;
-//             std::cout << left_chunk.ToString() << std::endl;
-//             std::cout << "________________________Right Chunk____________________________________" << std::endl;
-//             std::cout << right_chunk.ToString() << std::endl;
-
-
-//             for (idx_t i = 0; i < left_chunk.size(); ++i) {
-//                 for (idx_t j = 0; j < right_chunk.size(); ++j) {
-//                     // Manually copy single row from left_chunk into joined_chunk
-//                     for (idx_t col = 0; col < left_chunk.ColumnCount(); ++col) {
-//                         joined_chunk.data[col].SetValue(0, left_chunk.data[col].GetValue(i));
-//                     }
-
-//                     // Manually copy single row from right_chunk into joined_chunk
-//                     for (idx_t col = 0; col < right_chunk.ColumnCount(); ++col) {
-//                         idx_t out_col = left_chunk.ColumnCount() + col;
-
-//                         std::cout << ">>>>"<< out_col << std::endl;
-//                         std::cout << joined_chunk.ColumnCount() << std::endl;
-//                         std::cout << ">>>>"<< col << std::endl;
-//                          std::cout << right_chunk.ColumnCount() << std::endl;
-//                         std::cout << ">>>>"<< j << std::endl;
-
-//                         joined_chunk.data[out_col].SetValue(0, right_chunk.data[col].GetValue(j));
-
-//                     }
-
-//                     std::cout << "_________JOINED CHUNK:___________" << std::endl;
-//                     std::cout << joined_chunk.ToString() << std::endl;
-
-
-//                     // Evaluate join condition if any
-//                     if (condition) {
-//                         ExpressionExecutor condition_executor(context);
-//                         condition_executor.AddExpression(*condition);
-//                         DataChunk condition_result;
-//                         condition_result.Initialize(Allocator::Get(context), {LogicalType::BOOLEAN});
-//                         condition_executor.Execute(joined_chunk, condition_result);
-//                         auto result_ptr = FlatVector::GetData<bool>(condition_result.data[0]);
-//                         if (!result_ptr[0]) {
-//                             continue;
-//                         }
-//                     }
-
-//                     // Extract group keys
-//                     DataChunk group_chunk;
-//                     group_chunk.InitializeEmpty(global_state.group_types);
-//                     group_chunk.SetCardinality(1);
-//                     std::cout << "group_chunk.ColumnCount(): " << group_chunk.ColumnCount() << std::endl;
-//                     std::cout << "global_state.grouping_indices.size(): " << global_state.grouping_indices.size() << std::endl;
-//                     for (idx_t g = 0; g < global_state.grouping_indices.size(); ++g) {
-//                         idx_t idx = global_state.grouping_indices[g];
-//                         std::cout << "grouping index: " << idx << std::endl;
-//                         if (idx >= joined_chunk.ColumnCount()) {
-//                             std::cout << "ERROR: grouping index out of bounds!" << std::endl;
-//                             continue;
-//                         }
-//                         if (g >= group_chunk.ColumnCount()) {
-//                             std::cout << "ERROR: group_chunk index out of bounds!" << std::endl;
-//                             continue;
-//                         }
-//                         std::cout << "Hello there 111\n";
-//                         // group_chunk.data[g].SetValue(0, joined_chunk.data[idx].GetValue(0));
-//                         group_chunk.data[g].Reference(joined_chunk.data[idx]);
-//                         std::cout << "Hello there 222\n";
-//                     }
-
-//                     // Extract aggregate inputs
-//                     DataChunk aggr_input_chunk;
-//                     // aggr_input_chunk.Initialize(Allocator::Get(context), global_state.hash_table->GetTypes());
-                
-//                 std::cout << "Hello there\n";
-
-
-//                 vector<LogicalType> aggr_input_types;
-//                 for (auto &aggr_expr : aggregates) {
-//                 auto *agg = dynamic_cast<BoundAggregateExpression*>(aggr_expr.get());
-                
-//                   std::cout << "Aggregate: " << aggr_expr->GetName() << ", children: " << (agg ? agg->children.size() : 0) << std::endl;
-//                     if (agg) {
-//                         for (auto &child : agg->children) {
-//                             std::cout << "  Child type: " << child->return_type.ToString() << std::endl;
-//                         }
-//                     }
-
-//                 if (agg && !agg->children.empty()) {
-//                     aggr_input_types.push_back(agg->children[0]->return_type);
-//                 } else if (agg && agg->children.empty()) {
-//                     // COUNT(*) expects no input, but DataChunk must have at least one column, so use INTEGER
-//                     aggr_input_types.push_back(LogicalType::INTEGER);
-//                 } else {
-//                     aggr_input_types.push_back(aggr_expr->return_type);
-//                 }
-//             }
-//                 for (auto &t : aggr_input_types) {
-//                     std::cout << "Aggregate input type: " << t.ToString() << std::endl;
-//                 }
-
-//                 aggr_input_chunk.Initialize(Allocator::Get(context), aggr_input_types);
-
-//                     // ExpressionExecutor aggr_exec(context);
-//                     // for (auto &aggr_expr : aggregates) {
-//                     //     aggr_exec.AddExpression(*aggr_expr);
-//                     // }
-//                     // aggr_exec.Execute(joined_chunk, aggr_input_chunk);
-
-//                     // Prepare executors for each aggregate argument (child)
-//                     std::vector<std::unique_ptr<ExpressionExecutor>> aggr_executors;
-//                     for (auto &aggr_expr : aggregates) {
-//                         auto *agg = dynamic_cast<BoundAggregateExpression*>(aggr_expr.get());
-//                         if (agg && !agg->children.empty()) {
-//                             // For each child (argument) of the aggregate, create an executor
-//                             aggr_executors.push_back(make_uniq<ExpressionExecutor>(context, *agg->children[0]));
-//                         } else if (agg && agg->children.empty()) {
-//                             // COUNT(*) or similar: no executor needed, just push a nullptr
-//                             aggr_executors.push_back(nullptr);
-//                         } else {
-//                             // Fallback: not expected, but push nullptr
-//                             aggr_executors.push_back(nullptr);
-//                         }
-//                     }
-
-//                     for (idx_t k = 0; k < aggr_executors.size(); ++k) {
-//                         if (aggr_executors[k]) {
-//                             // Prepare a single-column result chunk for this argument
-//                             DataChunk arg_result;
-//                             arg_result.Initialize(Allocator::Get(context), {aggr_input_types[k]});
-//                             arg_result.SetCardinality(1);
-//                             aggr_executors[k]->Execute(joined_chunk, arg_result);
-//                             // Copy the result into the aggregate input chunk
-//                             aggr_input_chunk.data[k].Reference(arg_result.data[0]);
-//                         } else {
-//                             // For COUNT(*), set value to 1 (or any dummy value, as the aggregate ignores input)
-//                             aggr_input_chunk.data[k].SetValue(0, Value::INTEGER(1));
-//                         }
-//                     }
-//                     aggr_input_chunk.SetCardinality(1);
-//                     // aggr_input_chunk.SetCardinality(1);
-
-//                     // Add to hash table
-//                     unsafe_vector<idx_t> filter;
-//                     global_state.hash_table->AddChunk(group_chunk, aggr_input_chunk, filter);
-//                 }
-//             }
-//         }
-//     }
-
-//     std::cout << "Just outside while\n";
-//     std::cout << "PhysicalGroupJoin::Finalize — Completed nested loop and aggregation" << std::endl;
-//     std::cout << "Hash table pointer after finalize: " << global_state.hash_table.get() << std::endl;
-//     if (global_state.hash_table->GetPartitionedData()) {
-//         auto &pdata = *global_state.hash_table->GetPartitionedData();
-//         std::cout << "partitioned_data OK, partitions: " << pdata.PartitionCount() << ", total rows: " << pdata.Count() << std::endl;
-//         for (idx_t i = 0; i < pdata.PartitionCount(); i++) {
-//             auto &partition = *pdata.GetPartitions()[i];
-//             std::cout << "  Partition " << i << " rows: " << partition.Count() << std::endl;
-//         }
-//     } else {
-//         std::cout << "partitioned_data is NULL after finalize!" << std::endl;
-//     }
-//     return SinkFinalizeType::READY;
-// }
-
-
-
-
-
-
-
-
-
-
 
 
 
 SinkFinalizeType PhysicalGroupJoin::Finalize(Pipeline &pipeline, Event &event, ClientContext &context, OperatorSinkFinalizeInput &input) const {
+
     auto &global_state = input.global_state.Cast<GroupJoinGlobalSinkState>();
     if (global_state.finalized) {
         return SinkFinalizeType::READY;
@@ -504,87 +312,499 @@ SinkFinalizeType PhysicalGroupJoin::Finalize(Pipeline &pipeline, Event &event, C
     std::cout << children[0]->GetName() << std::endl;
     std::cout << children[1]->GetName() << std::endl;
 
+
     DataChunk left_chunk, right_chunk;
 
-    int countlc = 1;
-    int countrc = 1;
-
-    // Define the map to store keys and aggregation results
-    // std::unordered_map<int, std::pair<int, int>> aggregation_map; // Key -> (Count, Sum)
-
-    std::cout << "----------------------Going To Enter---------------------\n";
+    int joined_chunk_count = 1;
 
     global_state.left_data.InitializeScan();
+
+    std::cout << "Just outside while.............\n";
     while (global_state.left_data.Scan(left_chunk)) {
-        std::cout << "LEFT CHUNK :" << countlc++ << std::endl;
-        
+        std::cout << "Just inside while.\n";
+        global_state.right_data.InitializeScan();
+        while (global_state.right_data.Scan(right_chunk)) {
+            
+            DataChunk joined_chunk;
+            vector<LogicalType> join_types;
+            // Use the actual types from left_chunk and right_chunk
+            for (idx_t col = 0; col < left_chunk.ColumnCount(); ++col) {
+                join_types.push_back(left_chunk.data[col].GetType());
+            }
+            for (idx_t col = 0; col < right_chunk.ColumnCount(); ++col) {
+                join_types.push_back(right_chunk.data[col].GetType());
+            }
+            joined_chunk.Initialize(Allocator::Get(context), join_types);
+            joined_chunk.SetCardinality(1);
 
-        // Insert keys from the left chunk into the map
-        for (idx_t row_idx = 0; row_idx < left_chunk.size(); ++row_idx) {
-            int key = left_chunk.data[0].GetValue(row_idx).GetValue<int>(); // Assuming the key is in the first column
-            int value = left_chunk.data[1].GetValue(row_idx).GetValue<int>(); // Assuming the value is in the second column
+            std::cout << "_______________________Left Chunk_____________________________________" << std::endl;
+            std::cout << left_chunk.ToString() << std::endl;
+            std::cout << "_______________________Right Chunk____________________________________" << std::endl;
+            std::cout << right_chunk.ToString() << std::endl;
 
-            if (aggregation_map.find(key) == aggregation_map.end()) {
-                aggregation_map[key] = {1, value}; // Initialize count and sum
-            } else {
-                aggregation_map[key].first += 1; // Increment count
-                aggregation_map[key].second += value; // Add to sum
+
+            for (idx_t i = 0; i < left_chunk.size(); ++i) {
+                for (idx_t j = 0; j < right_chunk.size(); ++j) {
+                    // Manually copy single row from left_chunk into joined_chunk
+                    for (idx_t col = 0; col < left_chunk.ColumnCount(); ++col) {
+                        joined_chunk.data[col].SetValue(0, left_chunk.data[col].GetValue(i));
+                    }
+
+                    // Manually copy single row from right_chunk into joined_chunk
+                    for (idx_t col = 0; col < right_chunk.ColumnCount(); ++col) {
+                        idx_t out_col = left_chunk.ColumnCount() + col;
+
+                        // std::cout << ">>>>"<< out_col << std::endl;
+                        // std::cout << joined_chunk.ColumnCount() << std::endl;
+                        // std::cout << ">>>>"<< col << std::endl;
+                        //  std::cout << right_chunk.ColumnCount() << std::endl;
+                        // std::cout << ">>>>"<< j << std::endl;
+
+                        joined_chunk.data[out_col].SetValue(0, right_chunk.data[col].GetValue(j));
+
+                    }
+
+                    // std::cout << "_________JOINED CHUNK:___________" << std::endl;
+                    // std::cout << joined_chunk.ToString() << std::endl;
+
+
+                    // Evaluate join condition if any
+                    if (condition) {
+                        ExpressionExecutor condition_executor(context);
+                        condition_executor.AddExpression(*condition);
+                        DataChunk condition_result;
+                        condition_result.Initialize(Allocator::Get(context), {LogicalType::BOOLEAN});
+                        condition_executor.Execute(joined_chunk, condition_result);
+                        auto result_ptr = FlatVector::GetData<bool>(condition_result.data[0]);
+                        if (!result_ptr[0]) {
+                            continue;
+                        }
+                    }
+
+                    std::cout << "______________JOINED CHUNK:" << joined_chunk_count++ << "________________"<< std::endl;
+                    std::cout << joined_chunk.ToString() << std::endl;
+
+                    // Extract group keys
+                    DataChunk group_chunk;
+                    group_chunk.InitializeEmpty(global_state.group_types);
+                    group_chunk.SetCardinality(1);
+
+                    std::cout << "group_chunk.ColumnCount(): " << group_chunk.ColumnCount() << std::endl;
+                    std::cout << "global_state.grouping_indices.size(): " << global_state.grouping_indices.size() << std::endl;
+                    for (idx_t g = 0; g < global_state.grouping_indices.size(); ++g) {
+                        idx_t idx = global_state.grouping_indices[g];
+                        std::cout << "grouping index: " << idx << std::endl;
+                        if (idx >= joined_chunk.ColumnCount()) {
+                            std::cout << "ERROR: grouping index out of bounds!" << std::endl;
+                            continue;
+                        }
+                        if (g >= group_chunk.ColumnCount()) {
+                            std::cout << "ERROR: group_chunk index out of bounds!" << std::endl;
+                            continue;
+                        }
+                        // std::cout << "Hello there 111\n";
+                        // group_chunk.data[g].SetValue(0, joined_chunk.data[idx].GetValue(0));
+                        group_chunk.data[g].Reference(joined_chunk.data[idx]);
+                        // std::cout << "Hello there 222\n";
+                    }
+
+                    // Extract aggregate inputs
+                    DataChunk aggr_input_chunk;
+                    // aggr_input_chunk.Initialize(Allocator::Get(context), global_state.hash_table->GetTypes());
+                
+
+
+                vector<LogicalType> aggr_input_types;
+                for (auto &aggr_expr : aggregates) {
+                    auto *agg = dynamic_cast<BoundAggregateExpression*>(aggr_expr.get());
+                    
+                    std::cout << "Aggregate: " << aggr_expr->GetName() << ", children: " << (agg ? agg->children.size() : 0) << std::endl;
+                        if (agg) {
+                            for (auto &child : agg->children) {
+                                std::cout << "  Child type: " << child->return_type.ToString() << std::endl;
+                            }
+                        }
+
+                    if (agg && !agg->children.empty()) {
+                        aggr_input_types.push_back(agg->children[0]->return_type);
+                    } else if (agg && agg->children.empty()) {
+                        // COUNT(*) expects no input, but DataChunk must have at least one column, so use INTEGER
+                        aggr_input_types.push_back(LogicalType::INTEGER);
+                    } else {
+                        aggr_input_types.push_back(aggr_expr->return_type);
+                    }
+                }
+
+                for (auto &t : aggr_input_types) {
+                    std::cout << "Aggregate input type: " << t.ToString() << std::endl;
+                }
+
+                aggr_input_chunk.Initialize(Allocator::Get(context), aggr_input_types);
+
+                    // ExpressionExecutor aggr_exec(context);
+                    // for (auto &aggr_expr : aggregates) {
+                    //     aggr_exec.AddExpression(*aggr_expr);
+                    // }
+                    // aggr_exec.Execute(joined_chunk, aggr_input_chunk);
+
+                    // Prepare executors for each aggregate argument (child)
+                    std::vector<std::unique_ptr<ExpressionExecutor>> aggr_executors;
+                    for (auto &aggr_expr : aggregates) {
+                        auto *agg = dynamic_cast<BoundAggregateExpression*>(aggr_expr.get());
+                        if (agg && !agg->children.empty()) {
+                            // For each child (argument) of the aggregate, create an executor
+                            aggr_executors.push_back(make_uniq<ExpressionExecutor>(context, *agg->children[0]));
+                        } else if (agg && agg->children.empty()) {
+                            // COUNT(*) or similar: no executor needed, just push a nullptr
+                            aggr_executors.push_back(nullptr);
+                        } else {
+                            // Fallback: not expected, but push nullptr
+                            aggr_executors.push_back(nullptr);
+                        }
+                    }
+
+                    for (idx_t k = 0; k < aggr_executors.size(); ++k) {
+                        if (aggr_executors[k]) {
+                            // Prepare a single-column result chunk for this argument
+                            DataChunk arg_result;
+                            arg_result.Initialize(Allocator::Get(context), {aggr_input_types[k]});
+                            arg_result.SetCardinality(1);
+                            aggr_executors[k]->Execute(joined_chunk, arg_result);
+                            // Copy the result into the aggregate input chunk
+                            std::cout << "Aggregate Input for Column " << k << ": " << arg_result.ToString() << std::endl;
+                            aggr_input_chunk.data[k].Reference(arg_result.data[0]);
+                        } else {
+                            // For COUNT(*), set value to 1 (or any dummy value, as the aggregate ignores input)
+                            aggr_input_chunk.data[k].SetValue(0, Value::INTEGER(1));
+                        }
+                    }
+                    aggr_input_chunk.SetCardinality(1);
+                    // aggr_input_chunk.SetCardinality(1);
+
+                    // Add to hash table
+                    unsafe_vector<idx_t> filter;
+                    std::cout << "Aggregation Input Chunk:\n" << aggr_input_chunk.ToString() << std::endl;
+                    std::cout << "Group Chunk:\n" << group_chunk.ToString() << std::endl;
+                    global_state.hash_table->AddChunk(group_chunk, aggr_input_chunk, filter);
+                }
             }
         }
     }
 
-    // Print the aggregation results
-    std::cout << "Aggregation Results:\n";
-    for (const auto &entry : aggregation_map) {
-        std::cout << "Key: " << entry.first << ", Count: " << entry.second.first << ", Sum: " << entry.second.second << std::endl;
-    }
+    std::cout << "Just outside while.\n";
+    std::cout << "PhysicalGroupJoin::Finalize — Completed nested loop and aggregation" << std::endl;
+    std::cout << "Hash table pointer after finalize: " << global_state.hash_table.get() << std::endl;
 
-    // std::unordered_map<int, int> aggregation_map2;
-    global_state.right_data.InitializeScan();
-    while (global_state.right_data.Scan(right_chunk)) {
-        std::cout << "RIGHT CHUNK :" << countrc++ << std::endl;
 
-            // Update keys in the map with matching values from the right chunk
-        for (idx_t row_idx = 0; row_idx < right_chunk.size(); ++row_idx) {
-                int key = right_chunk.data[0].GetValue(row_idx).GetValue<int>(); // Assuming the key is in the first column
 
-                if (aggregation_map2.find(key) != aggregation_map2.end()) {
-                    aggregation_map2[key] += 1;
-                }else{
-                    aggregation_map2[key] = 1;
-                }
-        }
-    }
+    if (global_state.hash_table->GetPartitionedData()) {
 
-    for(const auto& entry : aggregation_map2) {
-        int key = entry.first;
-        int value = entry.second;
 
-        if (aggregation_map.find(key) != aggregation_map.end()) {
-            aggregation_map[key].second *= value;
-            aggregation_map[key].first *= value;
-        }
-    }
+        auto &pdata = *global_state.hash_table->GetPartitionedData();
 
-    // Print the aggregation results
-    std::cout << "Aggregation Results:\n";
-    for (const auto &entry : aggregation_map2) {
-        std::cout << "Key : " << entry.first << ", Count : " << entry.second << std::endl;
-    }
+        for (idx_t i = 0; i < pdata.PartitionCount(); i++) {
 
-      // Print the aggregation results
-    std::cout << "Aggregation Results:\n";
-    for(const auto& entry : aggregation_map) {
-        int key = entry.first;
-        int count = entry.second.first;
-        int sum = entry.second.second;
-        std::cout << "Key : " << key << ", Count : " << count << ", Sum : " << sum << std::endl;
-    }
+            auto &partition = *pdata.GetPartitions()[i];
+            TupleDataScanState scan_state;
+            partition.InitializeScan(scan_state);
 
+            DataChunk result_chunk;
     
+            partition.InitializeScanChunk(scan_state, result_chunk);
+
+            while (partition.Scan(scan_state, result_chunk)) {
+                std::cout << "Partition " << i << ":\n" << result_chunk.ToString() << std::endl;
+            }
+        }
+
+
+
+
+
+
+
+        // auto &pdata = *global_state.hash_table->GetPartitionedData();
+        // std::cout << "Partitioned data OK, partitions: " << pdata.PartitionCount() << ", total rows: " << pdata.Count() << std::endl;
+
+        // for (idx_t i = 0; i < pdata.PartitionCount(); i++) {
+        //     auto &partition = *pdata.GetPartitions()[i];
+        //     std::cout << "Partition " << i << " rows: " << partition.Count() << std::endl;
+
+        //     if (partition.Count() == 0) {
+        //         std::cout << "Partition is empty!" << std::endl;
+        //         continue;
+        //     }
+
+        //     // Initialize scan state
+        //     TupleDataScanState scan_state;
+        //     partition.InitializeScan(scan_state);
+
+        //     // Scan rows
+        //     DataChunk result_chunk;
+        //     partition.InitializeScanChunk(scan_state, result_chunk);
+
+        //     while (partition.Scan(scan_state, result_chunk)) {
+        //         for (idx_t row_idx = 0; row_idx < result_chunk.size(); row_idx++) {
+        //             std::cout << "Row " << row_idx << ": ";
+        //             for (idx_t col_idx = 0; col_idx < result_chunk.ColumnCount(); col_idx++) {
+        //                 auto value = result_chunk.data[col_idx].GetValue(row_idx);
+        //                 std::cout << value.ToString() << " ";
+        //             }
+        //             std::cout << std::endl;
+        //         }
+        //     }
+        // }
+
+
+    } else {
+        std::cout << "Partitioned data is NULL after finalize!" << std::endl;
+    }
+
+
+
+    // if (global_state.hash_table) {
+    //     GroupedAggregateHashTableScanState scan_state;
+    //     DataChunk result_chunk;
+    //     // Initialize result_chunk with correct types
+    //     while (true) {
+    //         idx_t count = global_state.hash_table->Scan(result_chunk, scan_state, STANDARD_VECTOR_SIZE);
+    //         std::cout << "----------------->count: " << count << std::endl;
+    //         if (count == 0) break;
+    //         std::cout << "Result:" << count << std::endl;
+    //         std::cout << result_chunk.ToString() << std::endl;
+    //     }
+    // }
+
+
+
+
+
+
+
 
     return SinkFinalizeType::READY;
 }
+
+
+
+
+// SinkFinalizeType PhysicalGroupJoin::Finalize(Pipeline &pipeline, Event &event, ClientContext &context, OperatorSinkFinalizeInput &input) const {
+//     auto &global_state = input.global_state.Cast<GroupJoinGlobalSinkState>();
+//     if (global_state.finalized) {
+//         return SinkFinalizeType::READY;
+//     }
+//     global_state.finalized = true;
+
+//     DataChunk left_chunk, right_chunk;
+//     global_state.left_data.InitializeScan();
+//     global_state.right_data.InitializeScan();
+
+//     ExpressionExecutor join_condition_executor(context);
+//     if (condition) {
+//         join_condition_executor.AddExpression(*condition);
+//     }
+
+//     std::cout << "________________________________________________________________________\n";
+//     while (global_state.left_data.Scan(left_chunk)) {
+//         while (global_state.right_data.Scan(right_chunk)) {
+//             for (idx_t left_row = 0; left_row < left_chunk.size(); ++left_row) {
+//                 for (idx_t right_row = 0; right_row < right_chunk.size(); ++right_row) {
+//                    vector<LogicalType> join_types;
+
+//                     DataChunk joined_chunk;
+//                     // Add types from left_chunk
+//                     for (idx_t col = 0; col < left_chunk.ColumnCount(); ++col) {
+//                         join_types.push_back(left_chunk.data[col].GetType());
+//                     }
+//                     // Add types from right_chunk
+//                     for (idx_t col = 0; col < right_chunk.ColumnCount(); ++col) {
+//                         join_types.push_back(right_chunk.data[col].GetType());
+//                     }
+
+//                     // Initialize joined_chunk with combined types
+//                     joined_chunk.Initialize(Allocator::Get(context), join_types);
+
+//                     // Copy rows from left_chunk
+//                     for (idx_t col = 0; col < left_chunk.ColumnCount(); ++col) {
+//                         joined_chunk.data[col].SetValue(0, left_chunk.data[col].GetValue(left_row));
+//                     }
+
+//                     // Copy rows from right_chunk
+//                     for (idx_t col = 0; col < right_chunk.ColumnCount(); ++col) {
+//                         idx_t out_col = left_chunk.ColumnCount() + col; // Offset by left_chunk column count
+//                         joined_chunk.data[out_col].SetValue(0, right_chunk.data[col].GetValue(right_row));
+//                     }
+
+//                     // Set cardinality
+//                     joined_chunk.SetCardinality(1);
+
+//                     if (condition) {
+//                         DataChunk condition_result;
+//                         condition_result.Initialize(Allocator::Get(context), {LogicalType::BOOLEAN});
+//                         join_condition_executor.Execute(joined_chunk, condition_result);
+//                         auto result_ptr = FlatVector::GetData<bool>(condition_result.data[0]);
+//                         if (!result_ptr[0]) {
+//                             continue;
+//                         }
+//                     }
+
+//                     std::vector<Value> group_keys;
+//                     for (auto &group_expr : groups) {
+//                         ExpressionExecutor executor(context);
+//                         executor.AddExpression(*group_expr);
+//                         DataChunk result_chunk;
+//                         result_chunk.Initialize(Allocator::Get(context), {group_expr->return_type});
+//                         executor.Execute(joined_chunk, result_chunk);
+//                         group_keys.push_back(result_chunk.data[0].GetValue(0));
+//                     }
+
+//                     std::vector<Value> aggregate_inputs;
+//                     for (size_t i = 0; i < aggregates.size(); ++i) {
+//                         DataChunk aggregate_result;
+//                         aggregate_result.Initialize(Allocator::Get(context), {aggregates[i]->return_type});
+//                         aggregate_inputs.push_back(aggregate_result.data[0].GetValue(0));
+//                     }
+
+//                     if (aggregation_map.find(group_keys) == aggregation_map.end()) {
+//                         aggregation_map[group_keys] = aggregate_inputs;
+//                     } else {
+//                         for (size_t i = 0; i < aggregate_inputs.size(); ++i) {
+//                             aggregation_map[group_keys][i] = Value::DOUBLE(
+//                                 aggregation_map[group_keys][i].GetValue<double>() + aggregate_inputs[i].GetValue<double>());
+//                         }
+//                     }
+//                 }
+//             }
+//         }
+//     }
+//      std::cout << "________________________________________________________________________\n";
+
+//     return SinkFinalizeType::READY;
+// }
+
+
+
+
+
+
+
+
+
+// works
+// SinkFinalizeType PhysicalGroupJoin::Finalize(Pipeline &pipeline, Event &event, ClientContext &context, OperatorSinkFinalizeInput &input) const {
+//     auto &global_state = input.global_state.Cast<GroupJoinGlobalSinkState>();
+//     if (global_state.finalized) {
+//         return SinkFinalizeType::READY;
+//     }
+//     global_state.finalized = true;
+
+//     std::cout << "PhysicalGroupJoin::Finalize — Performing nested loop join and group-by" << std::endl;
+
+//     const auto &left_types = children[0]->types;
+//     const auto &right_types = children[1]->types;
+
+//     std::cout << children[0]->GetName() << std::endl;
+//     std::cout << children[1]->GetName() << std::endl;
+
+//     DataChunk left_chunk, right_chunk;
+
+//     int countlc = 1;
+//     int countrc = 1;
+
+//     aggregation_map.clear();
+//     aggregation_map2.clear();
+
+//     // find out the aggregation and type
+//     for(auto &aggr_expr : aggregates) {
+//         std::cout << "Agg:" << aggr_expr.get()->ToString() << std::endl;
+
+//     }
+
+//     for(auto &group : groups) {
+//         std::cout << "Group:" << group.get()->ToString() << std::endl;
+//     }
+        
+
+
+
+//     // Define the map to store keys and aggregation results
+//     // std::unordered_map<int, std::pair<int, int>> aggregation_map; // Key -> (Count, Sum)
+
+//     std::cout << "----------------------Going To Enter---------------------\n";
+
+//     global_state.left_data.InitializeScan();
+//     while (global_state.left_data.Scan(left_chunk)) {
+//         std::cout << "LEFT CHUNK :" << countlc++ << std::endl;
+//         std::cout << left_chunk.ToString() << std::endl;
+
+
+//         // Insert keys from the left chunk into the map
+//         for (idx_t row_idx = 0; row_idx < left_chunk.size(); ++row_idx) {
+//             int key = left_chunk.data[0].GetValue(row_idx).GetValue<int>(); // Assuming the key is in the first column
+//             float value = left_chunk.data[1].GetValue(row_idx).GetValue<float>(); // Assuming the value is in the second column
+
+//             if (aggregation_map.find(key) == aggregation_map.end()) {
+//                 aggregation_map[key] = {1, value}; // Initialize count and sum
+//             } else {
+//                 aggregation_map[key].first += 1; // Increment count
+//                 aggregation_map[key].second += value; // Add to sum
+//             }
+//         }
+//     }
+
+//     // Print the aggregation results
+//     std::cout << "Aggregation Results:\n";
+//     for (const auto &entry : aggregation_map) {
+//         std::cout << "Key: " << entry.first << ", Count: " << entry.second.first << ", Sum: " << entry.second.second << std::endl;
+//     }
+
+//     // std::unordered_map<int, int> aggregation_map2;
+//     global_state.right_data.InitializeScan();
+//     while (global_state.right_data.Scan(right_chunk)) {
+//         std::cout << "RIGHT CHUNK :" << countrc++ << std::endl;
+//          std::cout << right_chunk.ToString() << std::endl;
+
+//             // Update keys in the map with matching values from the right chunk
+//         for (idx_t row_idx = 0; row_idx < right_chunk.size(); ++row_idx) {
+//                 int key = right_chunk.data[0].GetValue(row_idx).GetValue<int>(); // Assuming the key is in the first column
+
+//                 if (aggregation_map2.find(key) != aggregation_map2.end()) {
+//                     aggregation_map2[key] += 1;
+//                 }else{
+//                     aggregation_map2[key] = 1;
+//                 }
+//         }
+//     }
+
+//     for(const auto& entry : aggregation_map2) {
+//         int key = entry.first;
+//         int value = entry.second;
+
+//         if (aggregation_map.find(key) != aggregation_map.end()) {
+//             aggregation_map[key].second *= value;
+//             aggregation_map[key].first *= value;
+//         }
+//     }
+
+//     // Print the aggregation results
+//     std::cout << "Aggregation Results:\n";
+//     for (const auto &entry : aggregation_map2) {
+//         std::cout << "Key : " << entry.first << ", Count : " << entry.second << std::endl;
+//     }
+
+//       // Print the aggregation results
+//     std::cout << "Aggregation Results:\n";
+//     for(const auto& entry : aggregation_map) {
+//         int key = entry.first;
+//         int count = entry.second.first;
+//         int sum = entry.second.second;
+//         std::cout << "Key : " << key << ", Count : " << count << ", Sum : " << sum << std::endl;
+//     }
+
+    
+
+//     return SinkFinalizeType::READY;
+// }
 
 
 
@@ -810,6 +1030,44 @@ unique_ptr<LocalSourceState> PhysicalGroupJoin::GetLocalSourceState(ExecutionCon
 
 
 
+
+
+
+// SourceResultType PhysicalGroupJoin::GetData(ExecutionContext &context, DataChunk &chunk, OperatorSourceInput &input) const {
+//     static idx_t scan_offset = 0;
+
+//     vector<LogicalType> result_types = {LogicalType::VARCHAR, LogicalType::FLOAT};
+//     if (chunk.ColumnCount() == 0) {
+//         chunk.Initialize(Allocator::Get(context.client), result_types);
+//     }
+
+//     idx_t remaining_entries = aggregation_map.size() - scan_offset;
+//     idx_t rows_to_output = remaining_entries < STANDARD_VECTOR_SIZE ? remaining_entries : STANDARD_VECTOR_SIZE;
+//     chunk.SetCardinality(rows_to_output);
+
+//     idx_t row_idx = 0;
+//     for (auto it = std::next(aggregation_map.begin(), scan_offset); row_idx < rows_to_output && it != aggregation_map.end(); ++it, ++row_idx) {
+//         std::string key_str;
+//         for (const auto &key : it->first) {
+//             key_str += key.ToString() + " ";
+//         }
+//         chunk.data[0].SetValue(row_idx, Value(key_str));
+//         chunk.data[1].SetValue(row_idx, it->second[1]);
+//     }
+
+//     scan_offset += rows_to_output;
+
+//     if (scan_offset >= aggregation_map.size()) {
+//         scan_offset = 0;
+//         return SourceResultType::FINISHED;
+//     }
+
+//     return SourceResultType::HAVE_MORE_OUTPUT;
+// }
+
+
+
+
 // SourceResultType PhysicalGroupJoin::GetData(ExecutionContext &context, DataChunk &chunk, OperatorSourceInput &input) const {
     
 //     std::cout << "Returning temporary result with two rows of 0s\n";
@@ -844,12 +1102,12 @@ unique_ptr<LocalSourceState> PhysicalGroupJoin::GetLocalSourceState(ExecutionCon
 // }
 
 
-
+// works
 SourceResultType PhysicalGroupJoin::GetData(ExecutionContext &context, DataChunk &chunk, OperatorSourceInput &input) const {
     static idx_t scan_offset = 0; // Track the current position in the aggregation results
 
     // Define the schema for the result (Key, Count, Sum)
-    vector<LogicalType> result_types = {LogicalType::INTEGER, LogicalType::INTEGER};
+    vector<LogicalType> result_types = {LogicalType::INTEGER, LogicalType::FLOAT};
     if (chunk.ColumnCount() == 0) {
         chunk.Initialize(Allocator::Get(context.client), result_types);
     }
@@ -864,7 +1122,7 @@ SourceResultType PhysicalGroupJoin::GetData(ExecutionContext &context, DataChunk
     for (auto it = std::next(aggregation_map.begin(), scan_offset); row_idx < rows_to_output && it != aggregation_map.end(); ++it, ++row_idx) {
         chunk.data[0].SetValue(row_idx, Value::INTEGER(it->first));       // Key
         // chunk.data[1].SetValue(row_idx, Value::INTEGER(it->second.first)); // Count
-        chunk.data[1].SetValue(row_idx, Value::INTEGER(it->second.second)); // Sum
+        chunk.data[1].SetValue(row_idx, Value::FLOAT(it->second.second)); // Sum
     }
 
     // Update the scan offset
@@ -913,6 +1171,8 @@ SourceResultType PhysicalGroupJoin::GetData(ExecutionContext &context, DataChunk
 
 //     return SourceResultType::HAVE_MORE_OUTPUT;
 // }
+
+
 
 // SourceResultType PhysicalGroupJoin::GetData(ExecutionContext &context, DataChunk &chunk, OperatorSourceInput &input) const {
 //     // auto &global_state = input.global_state->Cast<GroupJoinGlobalSinkState>();

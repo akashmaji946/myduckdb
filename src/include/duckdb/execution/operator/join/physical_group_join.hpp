@@ -12,13 +12,25 @@
 
 namespace duckdb {
 
+struct VectorHash {
+    std::size_t operator()(const std::vector<Value> &vec) const {
+        std::size_t seed = vec.size();
+        for (const auto &val : vec) {
+            seed ^= std::hash<std::string>()(val.ToString()) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
+        }
+        return seed;
+    }
+};
+
 //! PhysicalGroupJoin represents a nested loop join between two tables on arbitrary expressions. This is different
 //! from the PhysicalNestedLoopJoin in that it does not require expressions to be comparisons between the LHS and the
 //! RHS.
 class PhysicalGroupJoin : public PhysicalJoin {
 public:
-	 static std::unordered_map<int, std::pair<int, int>> aggregation_map;
+	 static std::unordered_map<int, std::pair<int, float>> aggregation_map;
 	 static std::unordered_map<int, int> aggregation_map2;
+
+	// mutable std::unordered_map<std::vector<Value>, std::vector<Value>, VectorHash> aggregation_map;
 
 	static constexpr const PhysicalOperatorType TYPE = PhysicalOperatorType::GROUP_JOIN;
 
