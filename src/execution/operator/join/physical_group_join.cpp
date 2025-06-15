@@ -36,6 +36,8 @@ PhysicalGroupJoin::PhysicalGroupJoin(LogicalOperator &op, unique_ptr<PhysicalOpe
 std::unordered_map<int, std::pair<int, int>> PhysicalGroupJoin::aggregation_map;
 std::unordered_map<int, int> PhysicalGroupJoin::aggregation_map2;
 
+std::unordered_map<int, int> PhysicalGroupJoin::final_results;
+
 
 PhysicalGroupJoin::~PhysicalGroupJoin() = default;
 
@@ -480,10 +482,246 @@ SinkResultType PhysicalGroupJoin::Sink(ExecutionContext &context, DataChunk &chu
 
 
 
+// int PhysicalGroupJoin::PerformEqualityAggregation(duckdb::GroupJoinGlobalSinkState &global_state, duckdb::DataChunk &left_chunk, duckdb::DataChunk &right_chunk,
+//                                 std::unordered_map<int, std::pair<int, int>> &aggregation_map,
+//                                 std::unordered_map<int, int> &aggregation_map2, int &countlc, int &countrc) const {
+    
+    
+//     std::cout << "----------------------PerformEqualityAggregation---------------------\n";
+//     aggregation_map.clear();
+//     aggregation_map2.clear();
+                                    
+//     // Process the left chunk
+//     global_state.left_data.InitializeScan();
+//     while (global_state.left_data.Scan(left_chunk)) {
+//         std::cout << "LEFT CHUNK=>:" << countlc++ << std::endl;
+
+//         // Insert keys from the left chunk into the map
+//         for (idx_t row_idx = 0; row_idx < left_chunk.size(); ++row_idx) {
+//             int key = left_chunk.data[0].GetValue(row_idx).GetValue<int>(); // Assuming the key is in the first column
+//             int value = left_chunk.data[1].GetValue(row_idx).GetValue<int>(); // Assuming the value is in the second column
+
+//             if (aggregation_map.find(key) == aggregation_map.end()) {
+//                 aggregation_map[key] = {1, value}; // Initialize count and sum
+//             } else {
+//                 aggregation_map[key].first += 1; // Increment count
+//                 aggregation_map[key].second += value; // Add to sum
+//             }
+//         }
+//     }
+
+//     // Process the right chunk
+//     global_state.right_data.InitializeScan();
+//     while (global_state.right_data.Scan(right_chunk)) {
+//         std::cout << "RIGHT CHUNK=>:" << countrc++ << std::endl;
+
+//         // Update keys in the map with matching values from the right chunk
+//         for (idx_t row_idx = 0; row_idx < right_chunk.size(); ++row_idx) {
+//             int key = right_chunk.data[0].GetValue(row_idx).GetValue<int>(); // Assuming the key is in the first column
+
+//             if (aggregation_map2.find(key) != aggregation_map2.end()) {
+//                 aggregation_map2[key] += 1;
+//             } else {
+//                 aggregation_map2[key] = 1;
+//             }
+//         }
+//     }
+
+//     // Combine the results from the right chunk into the left chunk's aggregation map
+//     for (const auto &entry : aggregation_map2) {
+//         int key = entry.first;
+//         int value = entry.second;
+
+//         if (aggregation_map.find(key) != aggregation_map.end()) {
+//             aggregation_map[key].second *= value;
+//             aggregation_map[key].first *= value;
+//         }
+//     }
+//     return 1;
+// }
+
+
+// int PhysicalGroupJoin::PerformInEqualityAggregation(duckdb::GroupJoinGlobalSinkState &global_state, duckdb::DataChunk &left_chunk, duckdb::DataChunk &right_chunk,
+//                                 std::unordered_map<int, std::pair<int, int>> &aggregation_map,
+//                                 std::unordered_map<int, int> &aggregation_map2, int &countlc, int &countrc) const {
+    
+//     std::cout << "<----------------------PerformInEqualityAggregation---------------------\n";
+//     aggregation_map.clear();
+//     aggregation_map2.clear();
+                                    
+//     // Process the left chunk
+//     global_state.left_data.InitializeScan();
+//     while (global_state.left_data.Scan(left_chunk)) {
+//         std::cout << "LEFT CHUNK=>:" << countlc++ << std::endl;
+
+//         // Insert keys from the left chunk into the map
+//         for (idx_t row_idx = 0; row_idx < left_chunk.size(); ++row_idx) {
+//             int key = left_chunk.data[0].GetValue(row_idx).GetValue<int>(); // Assuming the key is in the first column
+//             int value = left_chunk.data[1].GetValue(row_idx).GetValue<int>(); // Assuming the value is in the second column
+
+//             if (aggregation_map.find(key) == aggregation_map.end()) {
+//                 aggregation_map[key] = {1, value}; // Initialize count and sum
+//             } else {
+//                 aggregation_map[key].first += 1; // Increment count
+//                 aggregation_map[key].second += value; // Add to sum
+//             }
+//         }
+//     }
+
+//     // Process the right chunk
+//     global_state.right_data.InitializeScan();
+//     while (global_state.right_data.Scan(right_chunk)) {
+//         std::cout << "RIGHT CHUNK=>:" << countrc++ << std::endl;
+
+//         // Update keys in the map with matching values from the right chunk
+//         for (idx_t row_idx = 0; row_idx < right_chunk.size(); ++row_idx) {
+//             int key = right_chunk.data[0].GetValue(row_idx).GetValue<int>(); // Assuming the key is in the first column
+
+//             if (aggregation_map2.find(key) != aggregation_map2.end()) {
+//                 aggregation_map2[key] += 1;
+//             } else {
+//                 aggregation_map2[key] = 1;
+//             }
+//         }
+//     }
+
+//     // Combine the results from the right chunk into the left chunk's aggregation map
+//     for (const auto &entry1 : aggregation_map) {
+//         int key1 = entry1.first;
+//         int value11 = entry1.second.first;
+//         int value12 = entry1.second.second;
+
+//         int count1 = 0;
+//         int count2 = 1;
+//         for(auto &entry2 : aggregation_map2) {
+//             int key2 = entry2.first;
+//             int value2 = entry2.second;
+
+//             if(key1 != key2) {
+//                count1 += value11;
+//                count2 *= value12;
+            
+//             }
+//         } 
+        
+            
+//     }
+//     return 1;
+// }
 
 
 
 
+std::unordered_map<int, int> duckdb::PhysicalGroupJoin::PerformEqualityAggregation(
+    duckdb::GroupJoinGlobalSinkState &global_state, std::unordered_map<int, int>& final_results) const {
+
+    std::cout << "Inside PerformEqualityAggregation()........." << std::endl;
+
+    // Map to store pre-aggregated sums from the left table: Key -> SUM(v)
+    std::unordered_map<int, int> left_sums;
+    // Map to store key counts from the right table: Key -> COUNT(*)
+    std::unordered_map<int, int> right_counts;
+    duckdb::DataChunk scan_chunk;
+
+    // --- 1. Pre-aggregate the left table (A) ---
+    global_state.left_data.InitializeScan();
+    while (global_state.left_data.Scan(scan_chunk)) {
+        for (size_t i = 0; i < scan_chunk.size(); ++i) {
+            int key = scan_chunk.data[0].GetValue(i).GetValue<int>();
+            int value = scan_chunk.data[1].GetValue(i).GetValue<int>();
+            left_sums[key] += value;
+        }
+    }
+
+    // --- 2. Count keys in the right table (B) ---
+    global_state.right_data.InitializeScan();
+    while (global_state.right_data.Scan(scan_chunk)) {
+        for (size_t i = 0; i < scan_chunk.size(); ++i) {
+            int key = scan_chunk.data[0].GetValue(i).GetValue<int>();
+            right_counts[key]++;
+        }
+    }
+
+    // --- 3. Combine results using equality logic ---
+    for (const auto &left_entry : left_sums) {
+        int key = left_entry.first;
+        int sum = left_entry.second;
+        
+        // Find the number of matching rows in the right table.
+        int matching_rows = right_counts.count(key) ? right_counts.at(key) : 0;
+        
+        // Final sum is SUM(v) * COUNT(matching rows in B).
+        final_results[key] = sum * matching_rows;
+    }
+
+    return final_results;
+}
+
+
+std::unordered_map<int, int> duckdb::PhysicalGroupJoin::PerformInEqualityAggregation(
+    duckdb::GroupJoinGlobalSinkState &global_state, std::unordered_map<int, int>& final_results) const {
+
+    std::cout << "Inside PerformInEqualityAggregation()........." << std::endl;
+
+    // Map to store pre-aggregated sums from the left table: Key -> SUM(v)
+    std::unordered_map<int, int> left_sums;
+    // Map to store key counts from the right table: Key -> COUNT(*)
+    std::unordered_map<int, int> right_counts;
+    duckdb::DataChunk lscan_chunk;
+    duckdb::DataChunk rscan_chunk;
+
+
+    // --- 1. Pre-aggregate the left table (A) ---
+    global_state.left_data.InitializeScan();
+    while (global_state.left_data.Scan(lscan_chunk)) {
+        for (size_t i = 0; i < lscan_chunk.size(); ++i) {
+            int key = lscan_chunk.data[0].GetValue(i).GetValue<int>();
+            int value = lscan_chunk.data[1].GetValue(i).GetValue<int>();
+            left_sums[key] += value;
+        }
+    }
+
+    // --- 2. Count keys and total rows in the right table (B) ---
+    long long total_right_rows = 0;
+    global_state.right_data.InitializeScan();
+    while (global_state.right_data.Scan(rscan_chunk)) {
+        // std::cout << "rscan_chunk(): " << rscan_chunk.ToString() << std::endl;
+        total_right_rows += rscan_chunk.size();
+        for (size_t i = 0; i < rscan_chunk.size(); ++i) {
+            int key = rscan_chunk.data[0].GetValue(i).GetValue<int>();
+            // std::cout << "Key: " << key << std::endl;
+            right_counts[key]++;
+        }
+    }
+
+    // --- 3. Combine results using inequality logic ---
+    for (const auto &left_entry : left_sums) {
+        int key = left_entry.first;
+        int sum = left_entry.second;
+        
+        // Find the number of matching rows in the right table.
+        int matching_rows = right_counts.count(key) ? right_counts.at(key) : 0;
+        
+        // Non-matching rows = total rows - matching rows.
+        long long non_matching_rows = total_right_rows - matching_rows;
+
+        // Final sum is SUM(v) * COUNT(non-matching rows in B).
+        final_results[key] = sum * non_matching_rows;
+    }
+
+    // for(const auto& entry : left_sums) {
+    //     printf("| %-3d | %-5d |\n", entry.first, entry.second);
+    // }
+    //     for(const auto& entry : right_counts) {
+    //     printf("| %-3d | %-5d |\n", entry.first, entry.second);
+    // }
+
+    // for(const auto& entry : final_results) {
+    //     printf("| %-3d | %-5d |\n", entry.first, entry.second);
+    // }
+
+    return final_results;
+}
 
 
 
@@ -509,82 +747,56 @@ SinkFinalizeType PhysicalGroupJoin::Finalize(Pipeline &pipeline, Event &event, C
     int countlc = 1;
     int countrc = 1;
 
+    // clear the maps
+
+
     // Define the map to store keys and aggregation results
     // std::unordered_map<int, std::pair<int, int>> aggregation_map; // Key -> (Count, Sum)
 
     std::cout << "----------------------Going To Enter---------------------\n";
 
-    global_state.left_data.InitializeScan();
-    while (global_state.left_data.Scan(left_chunk)) {
-        std::cout << "LEFT CHUNK :" << countlc++ << std::endl;
-        
+    // std::unordered_map<int, int> final_results;
+    final_results.clear();
+    // PerformInEqualityAggregation(global_state, final_results);
 
-        // Insert keys from the left chunk into the map
-        for (idx_t row_idx = 0; row_idx < left_chunk.size(); ++row_idx) {
-            int key = left_chunk.data[0].GetValue(row_idx).GetValue<int>(); // Assuming the key is in the first column
-            int value = left_chunk.data[1].GetValue(row_idx).GetValue<int>(); // Assuming the value is in the second column
-
-            if (aggregation_map.find(key) == aggregation_map.end()) {
-                aggregation_map[key] = {1, value}; // Initialize count and sum
-            } else {
-                aggregation_map[key].first += 1; // Increment count
-                aggregation_map[key].second += value; // Add to sum
-            }
-        }
-    }
-
-    // Print the aggregation results
-    std::cout << "Aggregation Results:\n";
-    for (const auto &entry : aggregation_map) {
-        std::cout << "Key: " << entry.first << ", Count: " << entry.second.first << ", Sum: " << entry.second.second << std::endl;
-    }
-
-    // std::unordered_map<int, int> aggregation_map2;
-    global_state.right_data.InitializeScan();
-    while (global_state.right_data.Scan(right_chunk)) {
-        std::cout << "RIGHT CHUNK :" << countrc++ << std::endl;
-
-            // Update keys in the map with matching values from the right chunk
-        for (idx_t row_idx = 0; row_idx < right_chunk.size(); ++row_idx) {
-                int key = right_chunk.data[0].GetValue(row_idx).GetValue<int>(); // Assuming the key is in the first column
-
-                if (aggregation_map2.find(key) != aggregation_map2.end()) {
-                    aggregation_map2[key] += 1;
-                }else{
-                    aggregation_map2[key] = 1;
-                }
-        }
-    }
-
-    for(const auto& entry : aggregation_map2) {
-        int key = entry.first;
-        int value = entry.second;
-
-        if (aggregation_map.find(key) != aggregation_map.end()) {
-            aggregation_map[key].second *= value;
-            aggregation_map[key].first *= value;
-        }
-    }
-
-    // Print the aggregation results
-    std::cout << "Aggregation Results:\n";
-    for (const auto &entry : aggregation_map2) {
-        std::cout << "Key : " << entry.first << ", Count : " << entry.second << std::endl;
-    }
-
-      // Print the aggregation results
-    std::cout << "Aggregation Results:\n";
-    for(const auto& entry : aggregation_map) {
-        int key = entry.first;
-        int count = entry.second.first;
-        int sum = entry.second.second;
-        std::cout << "Key : " << key << ", Count : " << count << ", Sum : " << sum << std::endl;
-    }
-
+    PerformEqualityAggregation(global_state, final_results);
     
+
+    std::vector<int> sorted_keys;
+    for(const auto& pair : final_results) sorted_keys.push_back(pair.first);
+    std::sort(sorted_keys.begin(), sorted_keys.end());
+    
+    for (int key : sorted_keys) {
+         printf("| %-3d | %-5d |\n", key, final_results.at(key));
+    }
+    std::cout << "--------------------------------------------------\n\n";
+
+    // // Print the aggregation results
+    // std::cout << "Aggregation Results:\n";
+    // for (const auto &entry : aggregation_map) {
+    //     std::cout << "Key: " << entry.first << ", Count: " << entry.second.first << ", Sum: " << entry.second.second << std::endl;
+    // }
+
+
+    // // Print the aggregation results
+    // std::cout << "Aggregation Results:\n";
+    // for (const auto &entry : aggregation_map2) {
+    //     std::cout << "Key : " << entry.first << ", Count : " << entry.second << std::endl;
+    // }
+
+    // // Print the aggregation results
+    // std::cout << "Aggregation Results:\n";
+    // for(const auto& entry : aggregation_map) {
+    //     int key = entry.first;
+    //     int count = entry.second.first;
+    //     int sum = entry.second.second;
+    //     std::cout << "Key : " << key << ", Count : " << count << ", Sum : " << sum << std::endl;
+    // }
+
 
     return SinkFinalizeType::READY;
 }
+
 
 
 
@@ -855,16 +1067,16 @@ SourceResultType PhysicalGroupJoin::GetData(ExecutionContext &context, DataChunk
     }
 
     // Set the cardinality based on the remaining entries
-    idx_t remaining_entries = aggregation_map.size() - scan_offset;
+    idx_t remaining_entries = final_results.size() - scan_offset;
     idx_t rows_to_output = remaining_entries < STANDARD_VECTOR_SIZE ? remaining_entries : STANDARD_VECTOR_SIZE;
     chunk.SetCardinality(rows_to_output);
 
     // Populate the chunk with aggregation results
     idx_t row_idx = 0;
-    for (auto it = std::next(aggregation_map.begin(), scan_offset); row_idx < rows_to_output && it != aggregation_map.end(); ++it, ++row_idx) {
+    for (auto it = std::next(final_results.begin(), scan_offset); row_idx < rows_to_output && it != final_results.end(); ++it, ++row_idx) {
         chunk.data[0].SetValue(row_idx, Value::INTEGER(it->first));       // Key
         // chunk.data[1].SetValue(row_idx, Value::INTEGER(it->second.first)); // Count
-        chunk.data[1].SetValue(row_idx, Value::INTEGER(it->second.second)); // Sum
+        chunk.data[1].SetValue(row_idx, Value::INTEGER(it->second)); // Sum
     }
 
     // Update the scan offset
@@ -874,7 +1086,7 @@ SourceResultType PhysicalGroupJoin::GetData(ExecutionContext &context, DataChunk
     std::cout << "Chunk contents:\n" << chunk.ToString() << std::endl;
 
     // Return FINISHED if all entries have been sent out
-    if (scan_offset >= aggregation_map.size()) {
+    if (scan_offset >= final_results.size()) {
         scan_offset = 0; // Reset for future calls
         return SourceResultType::FINISHED;
     }

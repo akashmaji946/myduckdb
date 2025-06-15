@@ -11,14 +11,17 @@
 #include "duckdb/execution/operator/join/physical_join.hpp"
 
 namespace duckdb {
+class GroupJoinGlobalSinkState;
 
 //! PhysicalGroupJoin represents a nested loop join between two tables on arbitrary expressions. This is different
 //! from the PhysicalNestedLoopJoin in that it does not require expressions to be comparisons between the LHS and the
 //! RHS.
 class PhysicalGroupJoin : public PhysicalJoin {
 public:
-	 static std::unordered_map<int, std::pair<int, int>> aggregation_map;
-	 static std::unordered_map<int, int> aggregation_map2;
+	static std::unordered_map<int, std::pair<int, int>> aggregation_map;
+	static std::unordered_map<int, int> aggregation_map2;
+
+	static std::unordered_map<int, int> final_results;
 
 	static constexpr const PhysicalOperatorType TYPE = PhysicalOperatorType::GROUP_JOIN;
 
@@ -65,6 +68,20 @@ public:
 	bool ParallelSource() const override {
 		return false;
 	}
+
+	// int PerformEqualityAggregation(GroupJoinGlobalSinkState &global_state, DataChunk &left_chunk, DataChunk &right_chunk,
+    //                                 std::unordered_map<int, std::pair<int, int>> &aggregation_map,
+    //                                 std::unordered_map<int, int> &aggregation_map2, int &countlc, int &countrc) const;
+
+	// int PerformInEqualityAggregation(GroupJoinGlobalSinkState &global_state, DataChunk &left_chunk, DataChunk &right_chunk,
+    //                                 std::unordered_map<int, std::pair<int, int>> &aggregation_map,
+    //                                 std::unordered_map<int, int> &aggregation_map2, int &countlc, int &countrc) const;
+	
+	std::unordered_map<int, int> PerformEqualityAggregation(
+    duckdb::GroupJoinGlobalSinkState &global_state, std::unordered_map<int, int>& final_results) const;
+
+	std::unordered_map<int, int> PerformInEqualityAggregation(
+    duckdb::GroupJoinGlobalSinkState &global_state, std::unordered_map<int, int>& final_results) const;
 
 public:
 	// Sink interface
