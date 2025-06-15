@@ -186,6 +186,8 @@ void TaskScheduler::ExecuteForever(atomic<bool> *marker) {
 			}
 		}
 		if (queue->q.try_dequeue(task)) {
+
+
 			auto execute_result = task->Execute(TaskExecutionMode::PROCESS_ALL);
 
 			switch (execute_result) {

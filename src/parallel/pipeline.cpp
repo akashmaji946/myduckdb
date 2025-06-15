@@ -12,6 +12,9 @@
 #include "duckdb/parallel/pipeline_event.hpp"
 #include "duckdb/parallel/pipeline_executor.hpp"
 #include "duckdb/parallel/task_scheduler.hpp"
+#include <iostream>
+#include <chrono>
+#include <thread>
 
 namespace duckdb {
 
@@ -49,6 +52,7 @@ TaskExecutionResult PipelineTask::ExecuteTask(TaskExecutionMode mode) {
 		}
 	} else {
 		auto res = pipeline_executor->Execute();
+		
 		switch (res) {
 		case PipelineExecuteResult::NOT_FINISHED:
 			throw InternalException("Execute without limit should not return NOT_FINISHED");
@@ -58,6 +62,9 @@ TaskExecutionResult PipelineTask::ExecuteTask(TaskExecutionMode mode) {
 			break;
 		}
 	}
+
+	std::cout << "%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%\n";
+	
 
 	event->FinishTask();
 	pipeline_executor.reset();
@@ -80,6 +87,9 @@ bool Pipeline::GetProgress(double &current_percentage, idx_t &source_cardinality
 		return true;
 	}
 	auto &client = executor.context;
+	std::cout << "&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&SOURCE?" << source->GetName() << std::endl;
+	// sleep for 1 sec
+	std::this_thread::sleep_for(std::chrono::seconds(1));
 	current_percentage = source->GetProgress(client, *source_state);
 	current_percentage = sink->GetSinkProgress(client, *sink->sink_state, current_percentage);
 	return current_percentage >= 0;

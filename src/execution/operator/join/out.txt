@@ -1,0 +1,418 @@
+#include <iostream>
+#include <vector>
+#include <unordered_map>
+#include <numeric>
+#include <string>
+#include <algorithm> // Required for std::sort
+
+// --- Mock DuckDB classes for standalone demonstration ---
+// In a real environment, you would include the actual DuckDB headers.
+namespace duckdb {
+    class Value {
+    public:
+        Value(int val) : val_(val) {}
+        template<typename T>
+        T GetValue() const { return static_cast<T>(val_); }
+    private:
+        int val_;
+    };
+
+    class Vector {
+    public:
+        Value GetValue(size_t index) const { return data_[index]; }
+        void Append(int value) { data_.emplace_back(value); }
+        size_t size() const { return data_.size(); }
+    private:
+        std::vector<Value> data_;
+    };
+
+    class DataChunk {
+    public:
+        std::vector<Vector> data;
+        size_t size() const { return data.empty() ? 0 : data[0].size(); }
+    };
+
+    class ChunkCollection {
+    public:
+        std::vector<DataChunk> chunks;
+        size_t scan_index = 0;
+        void Append(const DataChunk& new_chunk) { chunks.push_back(new_chunk); }
+        void InitializeScan() { scan_index = 0; }
+        bool Scan(DataChunk& output) {
+            if (scan_index < chunks.size()) {
+                output = chunks[scan_index];
+                scan_index++;
+                return true;
+            }
+            return false;
+        }
+    };
+    
+    struct GroupJoinGlobalSinkState {
+        ChunkCollection left_data;
+        ChunkCollection right_data;
+        bool finalized = false;
+    };
+
+    // Enum to define the type of comparison for the join
+    enum class JoinComparisonType {
+        EQUALITY,
+        INEQUALITY,
+        LESS_THAN,
+        GREATER_THAN,
+        LESS_THAN_OR_EQUAL,
+        GREATER_THAN_OR_EQUAL
+    };
+    
+    // --- Refactored Physical Operator Class ---
+    class PhysicalGroupJoin {
+    public:
+        std::unordered_map<int, int> PerformEqualityAggregation(GroupJoinGlobalSinkState &global_state) const;
+        std::unordered_map<int, int> PerformInEqualityAggregation(GroupJoinGlobalSinkState &global_state) const;
+        std::unordered_map<int, int> PerformLessThanAggregation(GroupJoinGlobalSinkState &global_state) const;
+        std::unordered_map<int, int> PerformGreaterThanAggregation(GroupJoinGlobalSinkState &global_state) const;
+        std::unordered_map<int, int> PerformLessThanEqualsAggregation(GroupJoinGlobalSinkState &global_state) const;
+        std::unordered_map<int, int> PerformGreaterThanEqualsAggregation(GroupJoinGlobalSinkState &global_state) const;
+        void Finalize(GroupJoinGlobalSinkState &global_state, JoinComparisonType join_type) const;
+    };
+
+} // namespace duckdb
+
+
+std::unordered_map<int, int> duckdb::PhysicalGroupJoin::PerformEqualityAggregation(
+    duckdb::GroupJoinGlobalSinkState &global_state) const {
+
+    // Map to store pre-aggregated sums from the left table: Key -> SUM(v)
+    std::unordered_map<int, int> left_sums;
+    // Map to store key counts from the right table: Key -> COUNT(*)
+    std::unordered_map<int, int> right_counts;
+    duckdb::DataChunk scan_chunk;
+
+    // --- 1. Pre-aggregate the left table (A) ---
+    global_state.left_data.InitializeScan();
+    while (global_state.left_data.Scan(scan_chunk)) {
+        for (size_t i = 0; i < scan_chunk.size(); ++i) {
+            int key = scan_chunk.data[0].GetValue(i).GetValue<int>();
+            int value = scan_chunk.data[1].GetValue(i).GetValue<int>();
+            left_sums[key] += value;
+        }
+    }
+
+    // --- 2. Count keys in the right table (B) ---
+    global_state.right_data.InitializeScan();
+    while (global_state.right_data.Scan(scan_chunk)) {
+        for (size_t i = 0; i < scan_chunk.size(); ++i) {
+            int key = scan_chunk.data[0].GetValue(i).GetValue<int>();
+            right_counts[key]++;
+        }
+    }
+
+    // --- 3. Combine results using equality logic ---
+    std::unordered_map<int, int> final_results;
+    for (const auto &left_entry : left_sums) {
+        int key = left_entry.first;
+        int sum = left_entry.second;
+        
+        int matching_rows = right_counts.count(key) ? right_counts.at(key) : 0;
+        final_results[key] = sum * matching_rows;
+    }
+
+    return final_results;
+}
+
+
+std::unordered_map<int, int> duckdb::PhysicalGroupJoin::PerformInEqualityAggregation(
+    duckdb::GroupJoinGlobalSinkState &global_state) const {
+    
+    std::unordered_map<int, int> left_sums;
+    std::unordered_map<int, int> right_counts;
+    duckdb::DataChunk scan_chunk;
+
+    // --- 1. Pre-aggregate the left table (A) ---
+    global_state.left_data.InitializeScan();
+    while (global_state.left_data.Scan(scan_chunk)) {
+        for (size_t i = 0; i < scan_chunk.size(); ++i) {
+            int key = scan_chunk.data[0].GetValue(i).GetValue<int>();
+            int value = scan_chunk.data[1].GetValue(i).GetValue<int>();
+            left_sums[key] += value;
+        }
+    }
+
+    // --- 2. Count keys and total rows in the right table (B) ---
+    long long total_right_rows = 0;
+    global_state.right_data.InitializeScan();
+    while (global_state.right_data.Scan(scan_chunk)) {
+        total_right_rows += scan_chunk.size();
+        for (size_t i = 0; i < scan_chunk.size(); ++i) {
+            int key = scan_chunk.data[0].GetValue(i).GetValue<int>();
+            right_counts[key]++;
+        }
+    }
+
+    // --- 3. Combine results using inequality logic ---
+    std::unordered_map<int, int> final_results;
+    for (const auto &left_entry : left_sums) {
+        int key = left_entry.first;
+        int sum = left_entry.second;
+        
+        int matching_rows = right_counts.count(key) ? right_counts.at(key) : 0;
+        long long non_matching_rows = total_right_rows - matching_rows;
+        final_results[key] = sum * non_matching_rows;
+    }
+
+    return final_results;
+}
+
+
+std::unordered_map<int, int> duckdb::PhysicalGroupJoin::PerformLessThanAggregation(
+    duckdb::GroupJoinGlobalSinkState &global_state) const {
+
+    std::unordered_map<int, int> left_sums;
+    std::unordered_map<int, int> right_counts;
+    duckdb::DataChunk scan_chunk;
+
+    // --- 1. Pre-aggregate the left table (A) ---
+    global_state.left_data.InitializeScan();
+    while (global_state.left_data.Scan(scan_chunk)) {
+        for (size_t i = 0; i < scan_chunk.size(); ++i) {
+            int key = scan_chunk.data[0].GetValue(i).GetValue<int>();
+            int value = scan_chunk.data[1].GetValue(i).GetValue<int>();
+            left_sums[key] += value;
+        }
+    }
+    
+    // --- 2. Count keys in the right table (B) ---
+    global_state.right_data.InitializeScan();
+    while (global_state.right_data.Scan(scan_chunk)) {
+        for (size_t i = 0; i < scan_chunk.size(); ++i) {
+            int key = scan_chunk.data[0].GetValue(i).GetValue<int>();
+            right_counts[key]++;
+        }
+    }
+
+    // --- 3. Combine results using less than logic ---
+    std::unordered_map<int, int> final_results;
+    for (const auto &left_entry : left_sums) {
+        int left_key = left_entry.first;
+        int left_sum = left_entry.second;
+        long long satisfying_rows = 0;
+
+        // For each left key, count rows in right table where right_key > left_key
+        for (const auto &right_entry : right_counts) {
+            if (left_key < right_entry.first) {
+                satisfying_rows += right_entry.second; // Add count of that key
+            }
+        }
+        final_results[left_key] = left_sum * satisfying_rows;
+    }
+    return final_results;
+}
+
+std::unordered_map<int, int> duckdb::PhysicalGroupJoin::PerformGreaterThanAggregation(
+    duckdb::GroupJoinGlobalSinkState &global_state) const {
+
+    std::unordered_map<int, int> left_sums;
+    std::unordered_map<int, int> right_counts;
+    duckdb::DataChunk scan_chunk;
+
+    // --- 1. Pre-aggregate the left table (A) ---
+    global_state.left_data.InitializeScan();
+    while (global_state.left_data.Scan(scan_chunk)) {
+        for (size_t i = 0; i < scan_chunk.size(); ++i) {
+            int key = scan_chunk.data[0].GetValue(i).GetValue<int>();
+            int value = scan_chunk.data[1].GetValue(i).GetValue<int>();
+            left_sums[key] += value;
+        }
+    }
+    
+    // --- 2. Count keys in the right table (B) ---
+    global_state.right_data.InitializeScan();
+    while (global_state.right_data.Scan(scan_chunk)) {
+        for (size_t i = 0; i < scan_chunk.size(); ++i) {
+            int key = scan_chunk.data[0].GetValue(i).GetValue<int>();
+            right_counts[key]++;
+        }
+    }
+
+    // --- 3. Combine results using greater than logic ---
+    std::unordered_map<int, int> final_results;
+    for (const auto &left_entry : left_sums) {
+        int left_key = left_entry.first;
+        int left_sum = left_entry.second;
+        long long satisfying_rows = 0;
+        
+        // For each left key, count rows in right table where right_key < left_key
+        for (const auto &right_entry : right_counts) {
+            if (left_key > right_entry.first) {
+                satisfying_rows += right_entry.second;
+            }
+        }
+        final_results[left_key] = left_sum * satisfying_rows;
+    }
+    return final_results;
+}
+
+std::unordered_map<int, int> duckdb::PhysicalGroupJoin::PerformLessThanEqualsAggregation(
+    duckdb::GroupJoinGlobalSinkState &global_state) const {
+
+    std::unordered_map<int, int> left_sums;
+    std::unordered_map<int, int> right_counts;
+    duckdb::DataChunk scan_chunk;
+    
+    global_state.left_data.InitializeScan();
+    while (global_state.left_data.Scan(scan_chunk)) {
+        for (size_t i = 0; i < scan_chunk.size(); ++i) {
+            left_sums[scan_chunk.data[0].GetValue(i).GetValue<int>()] += scan_chunk.data[1].GetValue(i).GetValue<int>();
+        }
+    }
+    
+    global_state.right_data.InitializeScan();
+    while (global_state.right_data.Scan(scan_chunk)) {
+        for (size_t i = 0; i < scan_chunk.size(); ++i) {
+            right_counts[scan_chunk.data[0].GetValue(i).GetValue<int>()]++;
+        }
+    }
+
+    std::unordered_map<int, int> final_results;
+    for (const auto &left_entry : left_sums) {
+        long long satisfying_rows = 0;
+        for (const auto &right_entry : right_counts) {
+            if (left_entry.first <= right_entry.first) {
+                satisfying_rows += right_entry.second;
+            }
+        }
+        final_results[left_entry.first] = left_entry.second * satisfying_rows;
+    }
+    return final_results;
+}
+
+std::unordered_map<int, int> duckdb::PhysicalGroupJoin::PerformGreaterThanEqualsAggregation(
+    duckdb::GroupJoinGlobalSinkState &global_state) const {
+    
+    std::unordered_map<int, int> left_sums;
+    std::unordered_map<int, int> right_counts;
+    duckdb::DataChunk scan_chunk;
+    
+    global_state.left_data.InitializeScan();
+    while (global_state.left_data.Scan(scan_chunk)) {
+        for (size_t i = 0; i < scan_chunk.size(); ++i) {
+            left_sums[scan_chunk.data[0].GetValue(i).GetValue<int>()] += scan_chunk.data[1].GetValue(i).GetValue<int>();
+        }
+    }
+    
+    global_state.right_data.InitializeScan();
+    while (global_state.right_data.Scan(scan_chunk)) {
+        for (size_t i = 0; i < scan_chunk.size(); ++i) {
+            right_counts[scan_chunk.data[0].GetValue(i).GetValue<int>()]++;
+        }
+    }
+
+    std::unordered_map<int, int> final_results;
+    for (const auto &left_entry : left_sums) {
+        long long satisfying_rows = 0;
+        for (const auto &right_entry : right_counts) {
+            if (left_entry.first >= right_entry.first) {
+                satisfying_rows += right_entry.second;
+            }
+        }
+        final_results[left_entry.first] = left_entry.second * satisfying_rows;
+    }
+    return final_results;
+}
+
+
+void duckdb::PhysicalGroupJoin::Finalize(duckdb::GroupJoinGlobalSinkState &global_state, duckdb::JoinComparisonType join_type) const {
+    if (global_state.finalized) {
+        return;
+    }
+    
+    std::unordered_map<int, int> final_results;
+    std::string join_type_str;
+
+    switch (join_type) {
+        case duckdb::JoinComparisonType::EQUALITY:
+            join_type_str = "Equality (A.k = B.k)";
+            final_results = PerformEqualityAggregation(global_state);
+            break;
+        case duckdb::JoinComparisonType::INEQUALITY:
+            join_type_str = "Inequality (A.k != B.k)";
+            final_results = PerformInEqualityAggregation(global_state);
+            break;
+        case duckdb::JoinComparisonType::LESS_THAN:
+            join_type_str = "Less Than (A.k < B.k)";
+            final_results = PerformLessThanAggregation(global_state);
+            break;
+        case duckdb::JoinComparisonType::GREATER_THAN:
+            join_type_str = "Greater Than (A.k > B.k)";
+            final_results = PerformGreaterThanAggregation(global_state);
+            break;
+        case duckdb::JoinComparisonType::LESS_THAN_OR_EQUAL:
+            join_type_str = "Less Than/Equal (A.k <= B.k)";
+            final_results = PerformLessThanEqualsAggregation(global_state);
+            break;
+        case duckdb::JoinComparisonType::GREATER_THAN_OR_EQUAL:
+            join_type_str = "Greater Than/Equal (A.k >= B.k)";
+            final_results = PerformGreaterThanEqualsAggregation(global_state);
+            break;
+    }
+    
+    global_state.finalized = true;
+
+    // --- Print the final results ---
+    std::cout << "--- Aggregation Results for " << join_type_str << " ---\n";
+    std::cout << "| k   | summ  |\n";
+    std::cout << "|-----|-------|\n";
+    std::vector<int> sorted_keys;
+    for(const auto& pair : final_results) sorted_keys.push_back(pair.first);
+    std::sort(sorted_keys.begin(), sorted_keys.end());
+    
+    for (int key : sorted_keys) {
+         printf("| %-3d | %-5d |\n", key, final_results.at(key));
+    }
+    std::cout << "--------------------------------------------------\n\n";
+}
+
+
+// --- Main function for demonstration ---
+int main() {
+    // 1. Setup mock data
+    duckdb::GroupJoinGlobalSinkState state;
+    duckdb::DataChunk left_chunk, right_chunk;
+    
+    left_chunk.data.resize(2);
+    int left_k[] = {100, 100, 100, 100, 200, 200, 200, 500, 500, 500, 500};
+    int left_v[] = {25, 25, 25, 25, 20, 20, 20, 50, 10, 30, 10};
+    for (int k : left_k) left_chunk.data[0].Append(k);
+    for (int v : left_v) left_chunk.data[1].Append(v);
+    state.left_data.Append(left_chunk);
+
+    right_chunk.data.resize(1);
+    int right_k[] = {100, 100, 200, 200, 200, 500, 500};
+    for (int k : right_k) right_chunk.data[0].Append(k);
+    state.right_data.Append(right_chunk);
+
+    // 2. Execute and print results for all join types
+    duckdb::PhysicalGroupJoin join_op;
+    
+    // Test each join type one by one
+    using duckdb::JoinComparisonType;
+
+    join_op.Finalize(state, JoinComparisonType::EQUALITY);
+    state.finalized = false; 
+
+    join_op.Finalize(state, JoinComparisonType::INEQUALITY);
+    state.finalized = false; 
+
+    join_op.Finalize(state, JoinComparisonType::LESS_THAN);
+    state.finalized = false;
+
+    join_op.Finalize(state, JoinComparisonType::GREATER_THAN);
+    state.finalized = false;
+
+    join_op.Finalize(state, JoinComparisonType::LESS_THAN_OR_EQUAL);
+    state.finalized = false;
+
+    join_op.Finalize(state, JoinComparisonType::GREATER_THAN_OR_EQUAL);
+
+    return 0;
+}

@@ -7,7 +7,7 @@ namespace duckdb {
 
 class ChunkCollection {
 public:
-	ChunkCollection() : total_chunk_count(0) {}
+	ChunkCollection() : total_chunk_count(0), total_num_chunks(0) {}
 
 	map<DataChunk*, bool> allocated;
 
@@ -19,12 +19,14 @@ public:
 		new_chunk->Append(chunk);
 		chunks.push_back(std::move(new_chunk));
 		total_chunk_count += chunk.size();
+		total_num_chunks++;
 	}
 
 	// Clear all stored chunks
 	void Reset() {
 		chunks.clear();
 		total_chunk_count = 0;
+		total_num_chunks = 0;
 	}
 
 	// Initialize a scan
@@ -74,11 +76,16 @@ public:
 		return total_chunk_count;
 	}
 
+	idx_t NumChunks() const {
+		return total_num_chunks;
+	}
+
 private:
 	vector<unique_ptr<DataChunk>> chunks;
 	idx_t scan_chunk_idx = 0;
 	idx_t scan_pos = 0;
 	idx_t total_chunk_count = 0;
+	idx_t total_num_chunks = 0;
 };
 
 } // namespace duckdb

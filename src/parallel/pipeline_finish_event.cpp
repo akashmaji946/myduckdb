@@ -2,7 +2,7 @@
 #include "duckdb/execution/executor.hpp"
 #include "duckdb/parallel/interrupt.hpp"
 #include "duckdb/parallel/executor_task.hpp"
-
+#include <iostream>
 namespace duckdb {
 
 //! The PipelineFinishTask calls Finalize on the sink. Note that this is a single-threaded operation, but is executed
@@ -38,11 +38,13 @@ public:
 		auto sink_state = sink->Finalize(pipeline, *event, executor.context, finalize_input);
 
 		if (sink_state == SinkFinalizeType::BLOCKED) {
-			return TaskExecutionResult::TASK_BLOCKED;
+			std::cout << "_________________________I AM BLOCKED______________________________" << std::endl;
+			// return TaskExecutionResult::TASK_BLOCKED;
 		}
 
 		sink->sink_state->state = sink_state;
 		event->FinishTask();
+		std::cout << "_________________________I AM FINISHED___________________________________" << std::endl;
 		return TaskExecutionResult::TASK_FINISHED;
 	}
 

@@ -2,6 +2,7 @@
 
 #include "duckdb/common/limits.hpp"
 #include "duckdb/main/client_context.hpp"
+#include "duckdb/execution/operator/join/physical_group_join.hpp"
 
 #ifdef DUCKDB_DEBUG_ASYNC_SINK_SOURCE
 #include <chrono>
@@ -29,7 +30,12 @@ PipelineExecutor::PipelineExecutor(ClientContext &context_p, Pipeline &pipeline_
 
 	intermediate_chunks.reserve(pipeline.operators.size());
 	intermediate_states.reserve(pipeline.operators.size());
+
+	std::cout <<"______________>" << pipeline.operators.size() << "<_______________"<< std::endl;
+
+
 	for (idx_t i = 0; i < pipeline.operators.size(); i++) {
+
 		auto &prev_operator = i == 0 ? *pipeline.source : pipeline.operators[i - 1].get();
 		auto &current_operator = pipeline.operators[i].get();
 
@@ -49,8 +55,10 @@ PipelineExecutor::PipelineExecutor(ClientContext &context_p, Pipeline &pipeline_
 		}
 		std::cout << "I am here:" << i << std::endl;
 	}
+
 	std::cout << "I am OUT:"<< std::endl;
 	InitializeChunk(final_chunk);
+
 }
 
 bool PipelineExecutor::TryFlushCachingOperators() {
@@ -170,17 +178,85 @@ SinkNextBatchType PipelineExecutor::NextBatch(duckdb::DataChunk &source_chunk) {
 	return SinkNextBatchType::READY;
 }
 
+
+
+
+
+
+
+
+
+
+
+
+
+// PipelineExecuteResult PipelineExecutor::Execute(idx_t max_chunks) {
+//     std::cout << "PipelineExecutor: Starting execution" << std::endl;
+
+//     for (idx_t i = 0; i < max_chunks; i++) {
+//         if (context.client.interrupted) {
+//             throw InterruptException();
+//         }
+
+//         // Fetch data from the source
+//         if (!exhausted_source) {
+//             DataChunk chunk;
+//             chunk.Initialize(Allocator::DefaultAllocator(), pipeline.source->GetTypes());
+//             auto source_result = FetchFromSource(chunk);
+
+//             if (source_result == SourceResultType::FINISHED) {
+//                 exhausted_source = true;
+//             }
+//         }
+
+//         // Process the sink
+//         if (exhausted_source) {
+//             auto sink_result = pipeline.sink->Sink(context, final_chunk, sink_input);
+//             if (sink_result == SinkResultType::NEED_MORE_INPUT) {
+//                 continue;
+//             }
+//         }
+
+//         // Finalize the pipeline
+//         if (exhausted_source && !finalized) {
+//             // Check if the operator is a GroupJoin and both tables are scanned
+//             if (pipeline.sink->type == PhysicalOperatorType::GROUP_JOIN) {
+//                 auto &global_state = pipeline.sink->sink_state.Cast<GroupJoinGlobalSinkState>();
+//                 if (!global_state.left_scanned || !global_state.right_scanned) {
+//                     std::cout << "PipelineExecutor: Waiting for both tables to be scanned" << std::endl;
+//                     continue; // Delay finalization
+//                 }
+//             }
+
+//             std::cout << "PipelineExecutor: Finalizing pipeline" << std::endl;
+//             auto finalize_result = pipeline.sink->Finalize(pipeline, *event, context, finalize_input);
+//             if (finalize_result == SinkFinalizeType::READY) {
+//                 finalized = true;
+//                 break;
+//             }
+//         }
+//     }
+
+//     std::cout << "PipelineExecutor: Execution complete" << std::endl;
+//     return PipelineExecuteResult::FINISHED;
+// }
+
+
+
+
+
+
+
+
 PipelineExecuteResult PipelineExecutor::Execute(idx_t max_chunks) {
 	D_ASSERT(pipeline.sink);
 
-	std::cout << "***************Printing all the operators:**********\n";
-	for (const auto& op_ref : pipeline.operators) {
-        const auto& op = op_ref.get();
-        // std::cout << op.GetName() << std::endl;
-    }
-	std::cout << "*********************************************************\n";
+	std::cout << "$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$" << std::endl;
+	std::cout << pipeline.sink->GetName() << std::endl;
 
 
+
+	
 	auto &source_chunk = pipeline.operators.empty() ? final_chunk : *intermediate_chunks[0];
 	for (idx_t i = 0; i < max_chunks; i++) {
 		if (context.client.interrupted) {
@@ -188,12 +264,20 @@ PipelineExecuteResult PipelineExecutor::Execute(idx_t max_chunks) {
 		}
 
 		OperatorResultType result;
+
+		// if(pipeline.sink->GetName() == "GROUP_JOIN"){
+		// 	result = ExecutePushInternal(source_chunk);
+
+		// }
+
+
 		if (exhausted_source && done_flushing && !remaining_sink_chunk && !next_batch_blocked &&
 		    in_process_operators.empty()) {
 			break;
 		} else if (remaining_sink_chunk) {
 			// The pipeline was interrupted by the Sink. We should retry sinking the final chunk.
 			result = ExecutePushInternal(final_chunk);
+			// std::cout << ">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>Exitting 0\n";
 			remaining_sink_chunk = false;
 		} else if (!in_process_operators.empty() && !started_flushing) {
 			// The pipeline was interrupted by the Sink when pushing a source chunk through the pipeline. We need to
@@ -201,6 +285,7 @@ PipelineExecuteResult PipelineExecutor::Execute(idx_t max_chunks) {
 			// the result for the pipeline
 			D_ASSERT(source_chunk.size() > 0);
 			result = ExecutePushInternal(source_chunk);
+			// std::cout << ">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>Exitting 1\n";
 		} else if (exhausted_source && !next_batch_blocked && !done_flushing) {
 			// The source was exhausted, try flushing all operators
 			auto flush_completed = TryFlushCachingOperators();
@@ -216,7 +301,7 @@ PipelineExecuteResult PipelineExecutor::Execute(idx_t max_chunks) {
 				// "Regular" path: fetch a chunk from the source and push it through the pipeline
 				source_chunk.Reset();
 				source_result = FetchFromSource(source_chunk);
-				std::cout << "Exitting 1\n";
+			
 				if (source_result == SourceResultType::BLOCKED) {
 					return PipelineExecuteResult::INTERRUPTED;
 				}
@@ -239,13 +324,14 @@ PipelineExecuteResult PipelineExecutor::Execute(idx_t max_chunks) {
 			}
 
 			result = ExecutePushInternal(source_chunk);
-			std::cout << "Exitting 2\n";
+			// std::cout << ">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>Exitting 2\n";
 		} else {
 			throw InternalException("Unexpected state reached in pipeline executor");
 		}
 
 		// SINK INTERRUPT
 		if (result == OperatorResultType::BLOCKED) {
+			std::cout << "------------------------SINK INTERRUPT........................" << std::endl;
 			remaining_sink_chunk = true;
 			return PipelineExecuteResult::INTERRUPTED;
 		}
@@ -259,7 +345,9 @@ PipelineExecuteResult PipelineExecutor::Execute(idx_t max_chunks) {
 		return PipelineExecuteResult::NOT_FINISHED;
 	}
 
-	std::cout << "Exitting\n";
+	std::cout << "....................Exitting the last.................\n";
+	std::cout << pipeline.sink->GetName() << std::endl;
+
 	return PushFinalize();
 }
 
@@ -268,6 +356,7 @@ bool PipelineExecutor::RemainingSinkChunk() const {
 }
 
 PipelineExecuteResult PipelineExecutor::Execute() {
+	std::cout << "________________________________" <<  "Execute(NumericLimits<idx_t>::Maximum())" << "________________________________" << std::endl;
 	return Execute(NumericLimits<idx_t>::Maximum());
 }
 
@@ -324,7 +413,7 @@ OperatorResultType PipelineExecutor::ExecutePushInternal(DataChunk &input, idx_t
 			OperatorSinkInput sink_input {*pipeline.sink->sink_state, *local_sink_state, interrupt_state};
 
 			auto sink_result = Sink(sink_chunk, sink_input);
-			std::cout << "STD PUSH INTERNAL\n";
+			// std::cout << "STD PUSH INTERNAL\n";
 			EndOperator(*pipeline.sink, nullptr);
 
 			if (sink_result == SinkResultType::BLOCKED) {
@@ -378,6 +467,7 @@ PipelineExecuteResult PipelineExecutor::PushFinalize() {
 	pipeline.executor.Flush(thread);
 	local_sink_state.reset();
 
+	std::cout << "________________________________PushFinalize()__________________________________________" << std::endl;
 	return PipelineExecuteResult::FINISHED;
 }
 
@@ -395,6 +485,9 @@ void PipelineExecutor::GoToSource(idx_t &current_idx, idx_t initial_idx) {
 }
 
 OperatorResultType PipelineExecutor::Execute(DataChunk &input, DataChunk &result, idx_t initial_idx) {
+
+	std::cout << "___________________________I AM STUCK_____________________" << std::endl;
+
 	if (input.size() == 0) { // LCOV_EXCL_START
 		return OperatorResultType::NEED_MORE_INPUT;
 	} // LCOV_EXCL_STOP
@@ -468,6 +561,7 @@ OperatorResultType PipelineExecutor::Execute(DataChunk &input, DataChunk &result
 			}
 		}
 	}
+	std::cout << "___________________________I AM STUCK_____________________" << std::endl;
 	return in_process_operators.empty() ? OperatorResultType::NEED_MORE_INPUT : OperatorResultType::HAVE_MORE_OUTPUT;
 }
 
@@ -492,6 +586,9 @@ SourceResultType PipelineExecutor::GetData(DataChunk &chunk, OperatorSourceInput
 	}
 #endif
 
+	// std::cout << "====================================GET DATA=================================\n";
+	// std::cout << pipeline.source->GetName() << std::endl;
+	// std::cout << "=====================================================================\n";
 	return pipeline.source->GetData(context, chunk, input);
 }
 
@@ -517,11 +614,15 @@ SinkResultType PipelineExecutor::Sink(DataChunk &chunk, OperatorSinkInput &input
 SourceResultType PipelineExecutor::FetchFromSource(DataChunk &result) {
 	StartOperator(*pipeline.source);
 
+	// std::cout << "FetchFromSource: Fetching data from source" << std::endl;
+
 	OperatorSourceInput source_input = {*pipeline.source_state, *local_source_state, interrupt_state};
 	auto res = GetData(result, source_input);
 
 	// Ensures Sinks only return empty results when Blocking or Finished
 	D_ASSERT(res != SourceResultType::BLOCKED || result.size() == 0);
+
+	// std::cout << "FetchFromSource: SourceResultType = " << (res == SourceResultType::HAVE_MORE_OUTPUT ? "HAVE_MORE_OUTPUT" : "FINISHED") << std::endl;
 
 	EndOperator(*pipeline.source, &result);
 	// std::cout << "ENDING:" << (*pipeline.source).GetName() << std::endl;
@@ -540,16 +641,18 @@ void PipelineExecutor::StartOperator(PhysicalOperator &op) {
 	if (context.client.interrupted) {
 		throw InterruptException();
 	}
+	// std::cout << "<====================START==========>" << op.GetName()  << std::endl;
+	//
 	context.thread.profiler.StartOperator(&op);
 }
 
 void PipelineExecutor::EndOperator(PhysicalOperator &op, optional_ptr<DataChunk> chunk) {
 	context.thread.profiler.EndOperator(chunk);
-
+	// std::cout << "<====================END==========>" << op.GetName()  << std::endl;
 	if (chunk) {
 		chunk->Verify();
-		std::cout << ">>ENDING-->" << op.GetName()  << std::endl;
-		std::cout << chunk->ToString() << std::endl;
+		// std::cout << ">>ENDING-->" << op.GetName()  << std::endl;
+		// std::cout << chunk->ToString() << std::endl;
 	}
 
 	// std::cout << ">>ENDING ===================" << op.GetName()  << std::endl;
