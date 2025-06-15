@@ -648,8 +648,14 @@ std::unordered_map<int, int> duckdb::PhysicalGroupJoin::PerformEqualityAggregati
     global_state.left_data.InitializeScan();
     while (global_state.left_data.Scan(lscan_chunk)) {
         for (size_t i = 0; i < lscan_chunk.size(); ++i) {
-            int key = lscan_chunk.data[0].GetValue(i).GetValue<int>();
-            int value = lscan_chunk.data[1].GetValue(i).GetValue<int>();
+            int key, value;
+            try{
+                             key = lscan_chunk.data[0].GetValue(i).GetValue<int>();
+                             value = lscan_chunk.data[1].GetValue(i).GetValue<int>();
+            }catch(const std::exception& e){
+                continue;
+            }
+                
             left_sums[key] += value;
         }
     }
@@ -662,7 +668,13 @@ std::unordered_map<int, int> duckdb::PhysicalGroupJoin::PerformEqualityAggregati
     global_state.right_data.InitializeScan();
     while (global_state.right_data.Scan(rscan_chunk)) {
         for (size_t i = 0; i < rscan_chunk.size(); ++i) {
-            int key = rscan_chunk.data[0].GetValue(i).GetValue<int>();
+            int key;
+            try{
+                key = rscan_chunk.data[0].GetValue(i).GetValue<int>();
+                            
+            }catch(const std::exception& e){
+                continue;
+            }
             right_counts[key]++;
         }
     }
