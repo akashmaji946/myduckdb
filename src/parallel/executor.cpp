@@ -214,19 +214,54 @@ void Executor::ScheduleEventsInternal(ScheduleEventData &event_data) {
 
 
 
-		// Step 2: Identify the nested loop join and aggregate pipelines
-	PipelineEventStack *nested_loop_join_stack = nullptr;
-	PipelineEventStack *aggregate_pipeline_stack = nullptr;
-	for (auto &entry : event_data.event_map) {
-		auto &pipeline = entry.first.get();
+	 // Step 2: Identify the scan pipelines and the finalize pipeline
+    PipelineEventStack *left_scan_stack = nullptr;
+    PipelineEventStack *right_scan_stack = nullptr;
+    PipelineEventStack *finalize_stack = nullptr;
 
-		// Example: Check if the pipeline contains the desired operator types
-		if (PipelineHasOperatorType(pipeline, PhysicalOperatorType::AM_US_JOIN)) {
-			nested_loop_join_stack = &entry.second;
-		} else if (PipelineHasOperatorType(pipeline, PhysicalOperatorType::PERFECT_HASH_GROUP_BY)) {
-			aggregate_pipeline_stack = &entry.second;
-		}
-	}
+    for (auto &entry : event_data.event_map) {
+        auto &pipeline = entry.first.get();
+
+        // Check if the pipeline contains a SEQ_SCAN operator
+        if (PipelineHasOperatorType(pipeline, PhysicalOperatorType::TABLE_SCAN)) {
+            if (!left_scan_stack) {
+                left_scan_stack = &entry.second; // Assign the first SEQ_SCAN to the left scan
+            } else if (!right_scan_stack) {
+                right_scan_stack = &entry.second; // Assign the second SEQ_SCAN to the right scan
+            }
+        }
+
+        // Check if the pipeline contains a GROUP_JOIN operator
+        if (PipelineHasOperatorType(pipeline, PhysicalOperatorType::GROUP_JOIN)) {
+            finalize_stack = &entry.second; // Assign the finalize pipeline
+        }
+    }
+
+    // Step 3: Add dependencies to ensure scans happen before finalize
+    if (left_scan_stack && right_scan_stack && finalize_stack) {
+        std::cout << "Adding dependencies: Left Scan -> Right Scan -> Finalize" << std::endl;
+
+        // Ensure the finalize pipeline waits for both scan pipelines to complete
+        finalize_stack->pipeline_event.AddDependency(left_scan_stack->pipeline_complete_event);
+        finalize_stack->pipeline_event.AddDependency(right_scan_stack->pipeline_complete_event);
+    }
+
+
+
+
+	// // Step 2: Identify the nested loop join and aggregate pipelines
+	// PipelineEventStack *nested_loop_join_stack = nullptr;
+	// PipelineEventStack *aggregate_pipeline_stack = nullptr;
+	// for (auto &entry : event_data.event_map) {
+	// 	auto &pipeline = entry.first.get();
+
+	// 	// Example: Check if the pipeline contains the desired operator types
+	// 	if (PipelineHasOperatorType(pipeline, PhysicalOperatorType::AM_US_JOIN)) {
+	// 		nested_loop_join_stack = &entry.second;
+	// 	} else if (PipelineHasOperatorType(pipeline, PhysicalOperatorType::PERFECT_HASH_GROUP_BY)) {
+	// 		aggregate_pipeline_stack = &entry.second;
+	// 	}
+	// }
 
 	// // Ensure both stacks were found
 	// std::cout << "-------------------------------DEPENDENCY------------------------------\n";

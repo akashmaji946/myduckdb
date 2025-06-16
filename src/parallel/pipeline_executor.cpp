@@ -31,7 +31,7 @@ PipelineExecutor::PipelineExecutor(ClientContext &context_p, Pipeline &pipeline_
 	intermediate_chunks.reserve(pipeline.operators.size());
 	intermediate_states.reserve(pipeline.operators.size());
 
-	std::cout <<"______________>" << pipeline.operators.size() << "<_______________"<< std::endl;
+	// std::cout <<"______________>" << pipeline.operators.size() << "<_______________"<< std::endl;
 
 
 	for (idx_t i = 0; i < pipeline.operators.size(); i++) {
@@ -56,7 +56,7 @@ PipelineExecutor::PipelineExecutor(ClientContext &context_p, Pipeline &pipeline_
 		std::cout << "I am here:" << i << std::endl;
 	}
 
-	std::cout << "I am OUT:"<< std::endl;
+	// std::cout << "I am OUT:"<< std::endl;
 	InitializeChunk(final_chunk);
 
 }
@@ -250,12 +250,7 @@ SinkNextBatchType PipelineExecutor::NextBatch(duckdb::DataChunk &source_chunk) {
 
 PipelineExecuteResult PipelineExecutor::Execute(idx_t max_chunks) {
 	D_ASSERT(pipeline.sink);
-
-	std::cout << "$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$" << std::endl;
-	std::cout << pipeline.sink->GetName() << std::endl;
-
-
-
+	// std::cout << ">> " <<pipeline.sink->GetName() << std::endl;
 	
 	auto &source_chunk = pipeline.operators.empty() ? final_chunk : *intermediate_chunks[0];
 	for (idx_t i = 0; i < max_chunks; i++) {
@@ -347,7 +342,6 @@ PipelineExecuteResult PipelineExecutor::Execute(idx_t max_chunks) {
 
 	std::cout << "....................Exitting the last.................\n";
 	std::cout << pipeline.sink->GetName() << std::endl;
-
 	return PushFinalize();
 }
 
@@ -486,7 +480,7 @@ void PipelineExecutor::GoToSource(idx_t &current_idx, idx_t initial_idx) {
 
 OperatorResultType PipelineExecutor::Execute(DataChunk &input, DataChunk &result, idx_t initial_idx) {
 
-	std::cout << "___________________________I AM STUCK_____________________" << std::endl;
+	// std::cout << "___________________________I AM STUCK_____________________" << std::endl;
 
 	if (input.size() == 0) { // LCOV_EXCL_START
 		return OperatorResultType::NEED_MORE_INPUT;
@@ -561,7 +555,7 @@ OperatorResultType PipelineExecutor::Execute(DataChunk &input, DataChunk &result
 			}
 		}
 	}
-	std::cout << "___________________________I AM STUCK_____________________" << std::endl;
+	// std::cout << "___________________________I AM STUCK_____________________" << std::endl;
 	return in_process_operators.empty() ? OperatorResultType::NEED_MORE_INPUT : OperatorResultType::HAVE_MORE_OUTPUT;
 }
 

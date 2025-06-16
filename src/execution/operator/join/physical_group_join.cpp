@@ -9,7 +9,8 @@
 #include "duckdb/common/types/chunk_collection.hpp"
 #include "duckdb/planner/expression/bound_aggregate_expression.hpp"
 #include "duckdb/parallel/meta_pipeline.hpp"
-
+#include <thread>
+#include <chrono>
 #include <iostream>
 
 namespace duckdb {
@@ -269,23 +270,20 @@ SinkResultType PhysicalGroupJoin::Sink(ExecutionContext &context, DataChunk &chu
     auto &left_types = children[0]->types;
     auto &right_types = children[1]->types;
 
+    int left_est_card = children[0]->estimated_cardinality;
+    int right_est_card = children[1]->estimated_cardinality;
+
+    std::cout << "ESTIMATED CARD: " << left_est_card << " " << right_est_card << std::endl;
+
 
     if (input_types == left_types) {
         // std::cout << "Appending chunk to LEFT table: " << leftc++ << std::endl;
-        if (chunk.size() < STANDARD_VECTOR_SIZE) {
-            std::cout << "SETTING THIS 1" << std::endl;
-            global_state.left_scanned = true; // Mark left table as fully scanned
-        }
         // std::cout << chunk.ToString() << std::endl;
         global_state.left_data.Append(chunk);
         //  std::cout << ">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>LEFT CHUNK SIZE: " << chunk.size() << std::endl;
 
     } else if (input_types == right_types) {
         // std::cout << "Appending chunk to RIGHT table: " << rightc++ << std::endl;
-        if (chunk.size() < STANDARD_VECTOR_SIZE) {
-             std::cout << "SETTING THIS 2" << std::endl;
-            global_state.right_scanned = true; // Mark right table as fully scanned
-        }
         // std::cout << chunk.ToString() << std::endl;
         //  std::cout << ">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>RIGHT CHUNK SIZE: " << chunk.size() << std::endl;
         global_state.right_data.Append(chunk);
@@ -294,6 +292,16 @@ SinkResultType PhysicalGroupJoin::Sink(ExecutionContext &context, DataChunk &chu
         throw InternalException("PhysicalGroupJoin::Sink: input chunk types do not match any child");
     }
     // std::cout << "Outside Sink()" << std::endl;
+     std::cout << "CURR CARD: " << global_state.left_data.Size() << " " << global_state.right_data.Size() << std::endl;
+     std::cout << (global_state.left_data.Size() == left_est_card) << " " << (global_state.right_data.Size() == right_est_card) << std::endl;
+    if (global_state.left_data.Size() == left_est_card) {
+        std::cout << "SETTING LEFT=============>" << std::endl;
+        global_state.left_scanned = true; // Mark left table as fully scanned
+    }
+    if (global_state.right_data.Size() == right_est_card) {
+            std::cout << "SETTING RIGHT ===============>" << std::endl;
+            global_state.right_scanned = true; // Mark right table as fully scanned
+    }
     return SinkResultType::NEED_MORE_INPUT;
 }
 
@@ -662,7 +670,7 @@ std::unordered_map<int, long long int> duckdb::PhysicalGroupJoin::PerformEqualit
     }
      std::cout << "______________________Inside PerformEqualityAggregation() 1__________________" << std::endl;
     for(const auto& entry : left_sums) {
-        std::cout << "Key: " << entry.first << ", Value: " << entry.second << std::endl;
+        std::cout << "Key: " << entry.first << ", Sum: " << entry.second << std::endl;
     }
 
     // --- 2. Count keys in the right table (B) ---
@@ -681,7 +689,7 @@ std::unordered_map<int, long long int> duckdb::PhysicalGroupJoin::PerformEqualit
     }
     std::cout << "______________________Inside PerformEqualityAggregation() 2__________________" << std::endl;
     for(const auto& entry : right_counts) {
-        std::cout << "Key: " << entry.first << ", Value: " << entry.second << std::endl;
+        std::cout << "Key: " << entry.first << ", Count: " << entry.second << std::endl;
     }
 
     // --- 3. Combine results using equality logic ---
@@ -771,20 +779,24 @@ std::unordered_map<int, long long int> duckdb::PhysicalGroupJoin::PerformInEqual
 
 SinkFinalizeType PhysicalGroupJoin::Finalize(Pipeline &pipeline, Event &event, ClientContext &context, OperatorSinkFinalizeInput &input) const {
     auto &global_state = input.global_state.Cast<GroupJoinGlobalSinkState>();
-    
-    // // Ensure both tables are fully scanned before finalizing
-    // if (!global_state.left_scanned || !global_state.right_scanned) {
-    //     std::cout << "Finalize delayed: Waiting for both tables to be scanned" << std::endl;
-    //     return SinkFinalizeType::BLOCKED; // Delay finalization
-    // }
+    // global_state.active_sink_tasks.load() > 0
+    try_again:
+
+    // Ensure both tables are fully scanned before finalizing
+    if (!global_state.left_scanned || !global_state.right_scanned) {
+        std::cout << ">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>Finalize delayed: Waiting for both tables to be scanned" << std::endl;
+        // std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        // goto try_again;
+        return SinkFinalizeType::NO_OUTPUT_POSSIBLE; // Delay finalization
+    }
 
     if (global_state.finalized) {
+        std::cout << ">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>Finalize ALREDAY completed for PhysicalGroupJoin" << std::endl;
         return SinkFinalizeType::READY;
     }
     global_state.finalized = true;
 
-    std::cout << "PhysicalGroupJoin::Finalize — Performing nested loop join and group-by" << std::endl;
-
+    
     const auto &left_types = children[0]->types;
     const auto &right_types = children[1]->types;
 
@@ -806,6 +818,7 @@ SinkFinalizeType PhysicalGroupJoin::Finalize(Pipeline &pipeline, Event &event, C
 
     // Define the map to store keys and aggregation results
     // std::unordered_map<int, std::pair<int, int>> aggregation_map; // Key -> (Count, Sum)
+    std::cout << "PhysicalGroupJoin::Finalize — Performing nested loop join and group-by" << std::endl;
 
     std::cout << "----------------------Going To Enter---------------------\n";
     std::cout << global_state.left_data.Size() << std::endl;
@@ -856,7 +869,7 @@ SinkFinalizeType PhysicalGroupJoin::Finalize(Pipeline &pipeline, Event &event, C
     // }
 
 
-    std::cout << "Finalize completed for PhysicalGroupJoin" << std::endl;
+    std::cout << ">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>Finalize completed for PhysicalGroupJoin" << std::endl;
     return SinkFinalizeType::READY;
 }
 
@@ -949,7 +962,8 @@ OperatorResultType PhysicalGroupJoin::ExecuteInternal(ExecutionContext &context,
 
     // // Just forward joined columns for now
     // chunk.Reference(join_result);
-
+    
+    std::cout << "(((((((((((((((((((((((((((((((()))))))))))))))))))))))INSIDE EXECUTE INTERNAL(((((((((((((((((((((((((((((((((((((((((((((((())))))))))))))))))))))))))))))))))))))))))))))))" << std::endl;
     return OperatorResultType::NEED_MORE_INPUT;
 
 }
@@ -1252,7 +1266,7 @@ InsertionOrderPreservingMap<string> PhysicalGroupJoin::ParamsToString() const {
 
 void PhysicalGroupJoin::BuildPipelines(Pipeline &current, MetaPipeline &meta_pipeline) {
     D_ASSERT(children.size() == 2); // Ensure binary join
-    // std::cout << "JIYO $$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$\n";
+    std::cout << "PIPELINE $$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$\n";
     auto &left_child = children[0];
     auto &right_child = children[1];
 
@@ -1277,8 +1291,15 @@ void PhysicalGroupJoin::BuildPipelines(Pipeline &current, MetaPipeline &meta_pip
     shared_ptr<Pipeline> &right_ptr = right_meta.GetBasePipeline();
 
     // --- Add dependencies: current depends on left and right ---
+    // right_ptr->AddDependency(left_ptr);
     current_ptr->AddDependency(left_ptr);
     current_ptr->AddDependency(right_ptr);
+
+    std::cout << current_ptr->ToString() << std::endl;
+    std::cout << left_ptr->ToString() << std::endl;
+    std::cout << right_ptr->ToString() << std::endl;
+
+
 }
 
 } // namespace duckdb

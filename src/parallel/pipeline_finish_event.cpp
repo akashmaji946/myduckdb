@@ -39,7 +39,7 @@ public:
 
 		if (sink_state == SinkFinalizeType::BLOCKED) {
 			std::cout << "_________________________I AM BLOCKED______________________________" << std::endl;
-			// return TaskExecutionResult::TASK_BLOCKED;
+			return TaskExecutionResult::TASK_BLOCKED;
 		}
 
 		sink->sink_state->state = sink_state;

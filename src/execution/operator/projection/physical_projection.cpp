@@ -67,8 +67,8 @@ OperatorResultType PhysicalProjection::Execute(ExecutionContext &context, DataCh
     }
 
     // Debug the input and output chunks
-    std::cout << "Projection Input Chunk:\n" << input.ToString() << std::endl;
-    std::cout << "Projection Output Chunk:\n" << chunk.ToString() << std::endl;
+    // std::cout << "Projection Input Chunk:\n" << input.ToString() << std::endl;
+    // std::cout << "Projection Output Chunk:\n" << chunk.ToString() << std::endl;
 
 	chunk.Verify();
     return OperatorResultType::NEED_MORE_INPUT;

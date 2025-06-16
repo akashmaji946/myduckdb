@@ -10,7 +10,7 @@
 #include "concurrentqueue.h"
 #include "duckdb/common/thread.hpp"
 #include "lightweightsemaphore.h"
-
+#include<iostream>
 #include <thread>
 #else
 #include <queue>
@@ -300,7 +300,9 @@ void TaskScheduler::SetThreads(idx_t total_threads, idx_t external_threads) {
 		    "DuckDB was compiled without threads! Setting total_threads != external_threads is not allowed.");
 	}
 #endif
+	
 	requested_thread_count = NumericCast<int32_t>(total_threads - external_threads);
+	std::cout << requested_thread_count << std::endl;
 }
 
 void TaskScheduler::SetAllocatorFlushTreshold(idx_t threshold) {

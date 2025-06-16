@@ -33,6 +33,11 @@ const PipelineExecutor &PipelineTask::GetPipelineExecutor() const {
 }
 
 TaskExecutionResult PipelineTask::ExecuteTask(TaskExecutionMode mode) {
+
+
+	// std::cout << ">>>> EXECUTE TASK %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%\n";
+
+
 	if (!pipeline_executor) {
 		pipeline_executor = make_uniq<PipelineExecutor>(pipeline.GetClientContext(), pipeline);
 	}
@@ -63,7 +68,7 @@ TaskExecutionResult PipelineTask::ExecuteTask(TaskExecutionMode mode) {
 		}
 	}
 
-	std::cout << "%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%\n";
+	// std::cout << "%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%\n";
 	
 
 	event->FinishTask();
@@ -87,9 +92,9 @@ bool Pipeline::GetProgress(double &current_percentage, idx_t &source_cardinality
 		return true;
 	}
 	auto &client = executor.context;
-	std::cout << "&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&SOURCE?" << source->GetName() << std::endl;
+	// std::cout << "&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&SOURCE?" << source->GetName() << std::endl;
 	// sleep for 1 sec
-	std::this_thread::sleep_for(std::chrono::seconds(1));
+	// std::this_thread::sleep_for(std::chrono::seconds(1));
 	current_percentage = source->GetProgress(client, *source_state);
 	current_percentage = sink->GetSinkProgress(client, *sink->sink_state, current_percentage);
 	return current_percentage >= 0;
@@ -98,6 +103,8 @@ bool Pipeline::GetProgress(double &current_percentage, idx_t &source_cardinality
 void Pipeline::ScheduleSequentialTask(shared_ptr<Event> &event) {
 	vector<shared_ptr<Task>> tasks;
 	tasks.push_back(make_uniq<PipelineTask>(*this, event));
+	// std::cout << "TASKS:" << tasks.size() << std::endl;
+
 	event->SetTasks(std::move(tasks));
 }
 
@@ -170,17 +177,19 @@ void Pipeline::Schedule(shared_ptr<Event> &event) {
 	D_ASSERT(ready);
 	D_ASSERT(sink);
 	Reset();
-	if (sink->type == PhysicalOperatorType::GROUP_JOIN) {
-			std::cout << "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@ SCHEDULING GROUP JOIN@@@@@@@@@@@@@@@@@@@@@@@@@---------------->" << std::endl;
-	}
-	if (!ScheduleParallel(event)) {
-		// could not parallelize this pipeline: push a sequential task instead
+	ScheduleSequentialTask(event);
+	// if (sink->type == PhysicalOperatorType::GROUP_JOIN) {
+	// 		std::cout << "@@@@@ SCHEDULING GROUP JOIN@@@@@@@@@@@@@@@@@@@@@@@@@---------------->" << std::endl;
+	// }
+	// if (!ScheduleParallel(event)) {
+	// 	// could not parallelize this pipeline: push a sequential task instead
 		
-		// if (sink->type == PhysicalOperatorType::GROUP_JOIN) {
-		// 	std::cout << "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@ SCHEDULING GROUP JOIN---------------->" << std::endl;
-		// }
-		ScheduleSequentialTask(event);
-	}
+	// 	if (sink->type == PhysicalOperatorType::GROUP_JOIN) {
+	// 		std::cout << ">>>>>>>>>>>>>>>>> SCHEDULING GROUP JOIN---------------->" << std::endl;
+	// 	}
+
+	// 	ScheduleSequentialTask(event);
+	// }
 }
 
 bool Pipeline::LaunchScanTasks(shared_ptr<Event> &event, idx_t max_threads) {

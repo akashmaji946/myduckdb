@@ -112,13 +112,13 @@ SourceResultType PhysicalTableScan::GetData(ExecutionContext &context, DataChunk
 }
 
 double PhysicalTableScan::GetProgress(ClientContext &context, GlobalSourceState &gstate_p) const {
-	std::cout << "^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^" << std::endl;
+	// std::cout << "^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^" << std::endl;
 	auto &gstate = gstate_p.Cast<TableScanGlobalSourceState>();
 	if (function.table_scan_progress) {
 		return function.table_scan_progress(context, bind_data.get(), gstate.global_state.get());
 	}
 	// if table_scan_progress is not implemented we don't support this function yet in the progress bar
-	std::cout << "**********************************************************************" << std::endl;
+	// std::cout << "**********************************************************************" << std::endl;
 	return -1;
 }
 
