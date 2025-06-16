@@ -138,6 +138,7 @@ bool Pipeline::ScheduleParallel(shared_ptr<Event> &event) {
 
 bool Pipeline::IsOrderDependent() const {
 	auto &config = DBConfig::GetConfig(executor.context);
+	std::cout << ")))))))))))))))))))))))))))))))))))))))))))))))))))))))))" << source->GetName() << std::endl;
 	if (source) {
 		auto source_order = source->SourceOrder();
 		if (source_order == OrderPreservationType::FIXED_ORDER) {
@@ -169,8 +170,15 @@ void Pipeline::Schedule(shared_ptr<Event> &event) {
 	D_ASSERT(ready);
 	D_ASSERT(sink);
 	Reset();
+	if (sink->type == PhysicalOperatorType::GROUP_JOIN) {
+			std::cout << "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@ SCHEDULING GROUP JOIN@@@@@@@@@@@@@@@@@@@@@@@@@---------------->" << std::endl;
+	}
 	if (!ScheduleParallel(event)) {
 		// could not parallelize this pipeline: push a sequential task instead
+		
+		// if (sink->type == PhysicalOperatorType::GROUP_JOIN) {
+		// 	std::cout << "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@ SCHEDULING GROUP JOIN---------------->" << std::endl;
+		// }
 		ScheduleSequentialTask(event);
 	}
 }

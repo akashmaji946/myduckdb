@@ -38,13 +38,14 @@ PhysicalGroupJoin::PhysicalGroupJoin(LogicalOperator &op, unique_ptr<PhysicalOpe
 std::unordered_map<int, std::pair<int, int>> PhysicalGroupJoin::aggregation_map;
 std::unordered_map<int, int> PhysicalGroupJoin::aggregation_map2;
 
-std::unordered_map<int, int> PhysicalGroupJoin::final_results;
+std::unordered_map<int, long long int> PhysicalGroupJoin::final_results;
 
 
 PhysicalGroupJoin::~PhysicalGroupJoin() = default;
 
 class GroupJoinGlobalSinkState : public GlobalSinkState {
 public:
+    std::atomic<int> active_sink_tasks{0};
     bool finalized = false;
 
     bool left_scanned = false;
@@ -632,15 +633,15 @@ SinkResultType PhysicalGroupJoin::Sink(ExecutionContext &context, DataChunk &chu
 
 
 
-std::unordered_map<int, int> duckdb::PhysicalGroupJoin::PerformEqualityAggregation(
-    duckdb::GroupJoinGlobalSinkState &global_state, std::unordered_map<int, int>& final_results) const {
+std::unordered_map<int, long long int> duckdb::PhysicalGroupJoin::PerformEqualityAggregation(
+    duckdb::GroupJoinGlobalSinkState &global_state, std::unordered_map<int, long long int>& final_results) const {
 
     std::cout << "Inside PerformEqualityAggregation()........." << std::endl;
 
     // Map to store pre-aggregated sums from the left table: Key -> SUM(v)
-    std::unordered_map<int, int> left_sums;
+    std::unordered_map<int, long long int> left_sums;
     // Map to store key counts from the right table: Key -> COUNT(*)
-    std::unordered_map<int, int> right_counts;
+    std::unordered_map<int, long long int> right_counts;
     duckdb::DataChunk lscan_chunk;
     duckdb::DataChunk rscan_chunk;
 
@@ -661,7 +662,7 @@ std::unordered_map<int, int> duckdb::PhysicalGroupJoin::PerformEqualityAggregati
     }
      std::cout << "______________________Inside PerformEqualityAggregation() 1__________________" << std::endl;
     for(const auto& entry : left_sums) {
-        printf("| %-3d | %-5d |\n", entry.first, entry.second);
+        std::cout << "Key: " << entry.first << ", Value: " << entry.second << std::endl;
     }
 
     // --- 2. Count keys in the right table (B) ---
@@ -680,34 +681,34 @@ std::unordered_map<int, int> duckdb::PhysicalGroupJoin::PerformEqualityAggregati
     }
     std::cout << "______________________Inside PerformEqualityAggregation() 2__________________" << std::endl;
     for(const auto& entry : right_counts) {
-        printf("| %-3d | %-5d |\n", entry.first, entry.second);
+        std::cout << "Key: " << entry.first << ", Value: " << entry.second << std::endl;
     }
 
     // --- 3. Combine results using equality logic ---
     for (const auto &left_entry : left_sums) {
         int key = left_entry.first;
-        int sum = left_entry.second;
+        long long int sum = left_entry.second;
         
         // Find the number of matching rows in the right table.
-        int matching_rows = right_counts.count(key) ? right_counts.at(key) : 0;
+        long long int matching_rows = right_counts.count(key) ? right_counts.at(key) : 0;
         
         // Final sum is SUM(v) * COUNT(matching rows in B).
-        final_results[key] = sum * matching_rows;
+        final_results[key] = 1ll* sum * matching_rows;
     }
 
     return final_results;
 }
 
 
-std::unordered_map<int, int> duckdb::PhysicalGroupJoin::PerformInEqualityAggregation(
-    duckdb::GroupJoinGlobalSinkState &global_state, std::unordered_map<int, int>& final_results) const {
+std::unordered_map<int, long long int> duckdb::PhysicalGroupJoin::PerformInEqualityAggregation(
+    duckdb::GroupJoinGlobalSinkState &global_state, std::unordered_map<int, long long int>& final_results) const {
 
     std::cout << "Inside PerformInEqualityAggregation()........." << std::endl;
 
     // Map to store pre-aggregated sums from the left table: Key -> SUM(v)
-    std::unordered_map<int, int> left_sums;
+    std::unordered_map<int, long long int> left_sums;
     // Map to store key counts from the right table: Key -> COUNT(*)
-    std::unordered_map<int, int> right_counts;
+    std::unordered_map<int, long long int> right_counts;
     duckdb::DataChunk lscan_chunk;
     duckdb::DataChunk rscan_chunk;
 
@@ -771,11 +772,11 @@ std::unordered_map<int, int> duckdb::PhysicalGroupJoin::PerformInEqualityAggrega
 SinkFinalizeType PhysicalGroupJoin::Finalize(Pipeline &pipeline, Event &event, ClientContext &context, OperatorSinkFinalizeInput &input) const {
     auto &global_state = input.global_state.Cast<GroupJoinGlobalSinkState>();
     
-    // Ensure both tables are fully scanned before finalizing
-    if (!global_state.left_scanned || !global_state.right_scanned) {
-        std::cout << "Finalize delayed: Waiting for both tables to be scanned" << std::endl;
-        return SinkFinalizeType::BLOCKED; // Delay finalization
-    }
+    // // Ensure both tables are fully scanned before finalizing
+    // if (!global_state.left_scanned || !global_state.right_scanned) {
+    //     std::cout << "Finalize delayed: Waiting for both tables to be scanned" << std::endl;
+    //     return SinkFinalizeType::BLOCKED; // Delay finalization
+    // }
 
     if (global_state.finalized) {
         return SinkFinalizeType::READY;
@@ -828,7 +829,7 @@ SinkFinalizeType PhysicalGroupJoin::Finalize(Pipeline &pipeline, Event &event, C
     
     std::cout << "--------------------------------------------------\n\n";
     for (int key : sorted_keys) {
-         printf("| %-3d | %-5d |\n", key, final_results.at(key));
+         std::cout << "Key: " << key << ", Count: " << final_results[key] << std::endl;
     }
     std::cout << "--------------------------------------------------\n\n";
 
@@ -1126,7 +1127,7 @@ SourceResultType PhysicalGroupJoin::GetData(ExecutionContext &context, DataChunk
     std::cout << "INSIDE GETDATA\n" << std::endl;
 
     // Define the schema for the result (Key, Count, Sum)
-    vector<LogicalType> result_types = {LogicalType::INTEGER, LogicalType::INTEGER};
+    vector<LogicalType> result_types = {LogicalType::INTEGER, LogicalType::HUGEINT};
     if (chunk.ColumnCount() == 0) {
         chunk.Initialize(Allocator::Get(context.client), result_types);
     }
@@ -1141,7 +1142,7 @@ SourceResultType PhysicalGroupJoin::GetData(ExecutionContext &context, DataChunk
     for (auto it = std::next(final_results.begin(), scan_offset); row_idx < rows_to_output && it != final_results.end(); ++it, ++row_idx) {
         chunk.data[0].SetValue(row_idx, Value::INTEGER(it->first));       // Key
         // chunk.data[1].SetValue(row_idx, Value::INTEGER(it->second.first)); // Count
-        chunk.data[1].SetValue(row_idx, Value::INTEGER(it->second)); // Sum
+        chunk.data[1].SetValue(row_idx, Value::HUGEINT(it->second)); // Sum
     }
 
     // Update the scan offset
@@ -1247,10 +1248,6 @@ InsertionOrderPreservingMap<string> PhysicalGroupJoin::ParamsToString() const {
     return result;
 }
 
-
-bool PhysicalGroupJoin::SinkOrderDependent() const  {
-	return true;
-}
 
 
 void PhysicalGroupJoin::BuildPipelines(Pipeline &current, MetaPipeline &meta_pipeline) {

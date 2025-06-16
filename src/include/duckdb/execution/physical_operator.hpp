@@ -188,7 +188,7 @@ public:
 	//! Whether or not the sink operator depends on the order of the input chunks
 	//! If this is set to true, we cannot do things like caching intermediate vectors
 	virtual bool SinkOrderDependent() const {
-		return false;
+		return true;
 	}
 
 public:
