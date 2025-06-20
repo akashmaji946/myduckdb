@@ -252,7 +252,14 @@ PipelineExecuteResult PipelineExecutor::Execute(idx_t max_chunks) {
 	D_ASSERT(pipeline.sink);
 	// std::cout << ">> " <<pipeline.sink->GetName() << std::endl;
 	
-	auto &source_chunk = pipeline.operators.empty() ? final_chunk : *intermediate_chunks[0];
+	auto &source_chunk = pipeline.operators.empty() ? final_chunk : ((pipeline.sink->GetName() == "RESULT_COLLECTOR") ? final_chunk :*intermediate_chunks[0]);
+	// if(pipeline.sink->GetName() == "RESULT_COLLECTOR"){
+	// 	source_chunk = final_chunk;
+	// }
+	// std::cout << ">><<<<<<<<<<<<<<<<<<<<<" << pipeline.sink->GetName() << std::endl;
+	// std::cout << source_chunk.ToString() << std::endl;
+	// std::cout << "-----------------------------------" << std::endl;
+
 	for (idx_t i = 0; i < max_chunks; i++) {
 		if (context.client.interrupted) {
 			throw InterruptException();
@@ -582,6 +589,7 @@ SourceResultType PipelineExecutor::GetData(DataChunk &chunk, OperatorSourceInput
 
 	// std::cout << "====================================GET DATA=================================\n";
 	// std::cout << pipeline.source->GetName() << std::endl;
+	// std::cout << chunk.ToString() << std::endl;
 	// std::cout << "=====================================================================\n";
 	return pipeline.source->GetData(context, chunk, input);
 }
@@ -627,7 +635,9 @@ SourceResultType PipelineExecutor::FetchFromSource(DataChunk &result) {
 void PipelineExecutor::InitializeChunk(DataChunk &chunk) {
 	std::cout << "Inside InitializeChunk()" << std::endl;
 	auto &last_op = pipeline.operators.empty() ? *pipeline.source : pipeline.operators.back().get();
+	std::cout << last_op.GetName() << std::endl;
 	chunk.Initialize(Allocator::DefaultAllocator(), last_op.GetTypes());
+	std::cout << chunk.ToString() << std::endl;
 	std::cout << "Inside InitializeChunk() END" << std::endl;
 }
 

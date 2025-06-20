@@ -7,18 +7,28 @@
 namespace duckdb {
 
 bool canReplaceByGroupJoin1(LogicalOperator &op){
-	if(op.type != LogicalOperatorType::LOGICAL_AGGREGATE_AND_GROUP_BY) return false;
+	if(op.type != LogicalOperatorType::LOGICAL_AGGREGATE_AND_GROUP_BY) 
+		return false;
+
 	auto &groupby = op.Cast<LogicalAggregate>();
-	if(groupby.groups.size() > 0 && groupby.children[0]->children[0]->type == LogicalOperatorType::LOGICAL_COMPARISON_JOIN){
+	
+	if( groupby.groups.size() > 0 && 
+	   	(
+			( groupby.children[0] && 
+			  groupby.children[0]->type == LogicalOperatorType::LOGICAL_COMPARISON_JOIN) ||
+			( groupby.children[0]->children[0] && 
+			  groupby.children[0]->children[0]->type == LogicalOperatorType::LOGICAL_COMPARISON_JOIN)
+		)
+	  ){
 		return true;
 	}
 	return false;
 }
 
 unique_ptr<PhysicalOperator> PhysicalPlanGenerator::CreatePlan(LogicalProjection &op) {
-		D_ASSERT(op.children.size() == 1);
+	D_ASSERT(op.children.size() == 1);
 
-	    if (canReplaceByGroupJoin1(*op.children[0])) {
+	if (canReplaceByGroupJoin1(*op.children[0])) {
         std::cout << ">>>>>>Group Join Candidate Found!<<<<<<" << std::endl;
 
         // Generate the GroupJoin plan

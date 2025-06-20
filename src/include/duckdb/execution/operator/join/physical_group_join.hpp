@@ -22,7 +22,7 @@ public:
 	static std::unordered_map<int, std::pair<int, int>> aggregation_map;
 	static std::unordered_map<int, int> aggregation_map2;
 
-	static std::unordered_map<int, long long int> final_results;
+	static std::unordered_map<int, double> final_results;
 
 	static constexpr const PhysicalOperatorType TYPE = PhysicalOperatorType::GROUP_JOIN;
 
@@ -78,11 +78,11 @@ public:
     //                                 std::unordered_map<int, std::pair<int, int>> &aggregation_map,
     //                                 std::unordered_map<int, int> &aggregation_map2, int &countlc, int &countrc) const;
 	
-	std::unordered_map<int, long long int> PerformEqualityAggregation(
-    duckdb::GroupJoinGlobalSinkState &global_state, std::unordered_map<int, long long int>& final_results) const;
+	void  PerformEqualityAggregation(
+    duckdb::GroupJoinGlobalSinkState &global_state, std::unordered_map<int, double>& final_results) const;
 
-	std::unordered_map<int, long long int> PerformInEqualityAggregation(
-    duckdb::GroupJoinGlobalSinkState &global_state, std::unordered_map<int, long long int>& final_results) const;
+	void PerformInEqualityAggregation(
+    duckdb::GroupJoinGlobalSinkState &global_state, std::unordered_map<int, double>& final_results) const;
 
 public:
 	// Sink interface
