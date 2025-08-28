@@ -14,6 +14,7 @@ namespace duckdb {
 class GroupJoinGlobalSinkState;
 class GroupJoinGlobalSourceState;
 
+
 //! PhysicalGroupJoin represents a nested loop join between two tables on arbitrary expressions. This is different
 //! from the PhysicalNestedLoopJoin in that it does not require expressions to be comparisons between the LHS and the
 //! RHS.
