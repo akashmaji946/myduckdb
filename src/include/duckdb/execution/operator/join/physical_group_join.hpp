@@ -49,7 +49,7 @@ public:
 	unique_ptr<OperatorState> GetOperatorState(ExecutionContext &context) const override;
 
 	bool ParallelOperator() const override {
-		return false;
+		return true;
 	}
 
 protected:
@@ -68,7 +68,7 @@ public:
 		return true;
 	}
 	bool ParallelSource() const override {
-		return false;
+		return true;
 	}
 
 	// int PerformEqualityAggregation(GroupJoinGlobalSinkState &global_state, DataChunk &left_chunk, DataChunk &right_chunk,
@@ -97,7 +97,7 @@ public:
 		return true;
 	}
 	bool ParallelSink() const {
-		return false;
+		return true;
 	}
 
 public:
@@ -109,7 +109,7 @@ public:
 		return OrderPreservationType::FIXED_ORDER;
 	}
 	OrderPreservationType OperatorOrder() const {
-		return OrderPreservationType::FIXED_ORDER;
+		return OrderPreservationType::NO_ORDER;
 	}
 	bool SinkOrderDependent() const {
 		return true;
