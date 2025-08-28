@@ -218,7 +218,7 @@ unique_ptr<PhysicalOperator> PhysicalPlanGenerator::PlanComparisonJoin(LogicalCo
     if(can_do_physical_amus_join(client_config, op, left, right)){
 		plan  = make_uniq<PhysicalAmUsJoin>(op, std::move(left), std::move(right), std::move(op.conditions),
 														op.join_type, op.estimated_cardinality);
-		// std::cout << "AM_US_JOIN Physical Plan Taken\n";
+		std::cout << "AM_US_JOIN Physical Plan Taken\n";
 		return plan;
 	}
 

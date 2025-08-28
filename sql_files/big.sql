@@ -57,7 +57,13 @@ FROM
 GROUP BY
     o.user_id,
     o.product_ordered;
-    
+
+-- SELECT
+--     o.user_id
+-- FROM
+--     orders o
+-- GROUP BY
+--     o.user_id;
 
 -- Query D
 SELECT
