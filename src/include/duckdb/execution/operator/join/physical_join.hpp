@@ -45,13 +45,13 @@ public:
 	vector<const_reference<PhysicalOperator>> GetSources() const override;
 
 	OrderPreservationType SourceOrder() const override {
-		return OrderPreservationType::FIXED_ORDER;
+		return OrderPreservationType::NO_ORDER;
 	}
 	OrderPreservationType OperatorOrder() const override {
-		return OrderPreservationType::FIXED_ORDER;
+		return OrderPreservationType::NO_ORDER;
 	}
 	bool SinkOrderDependent() const override {
-		return true;
+		return false;
 	}
 };
 

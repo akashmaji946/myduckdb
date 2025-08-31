@@ -106,7 +106,7 @@ public:
 	void BuildPipelines(Pipeline &current, MetaPipeline &meta_pipeline) override;
 
 	OrderPreservationType SourceOrder() const {
-		return OrderPreservationType::FIXED_ORDER;
+		return OrderPreservationType::NO_ORDER;
 	}
 	OrderPreservationType OperatorOrder() const {
 		return OrderPreservationType::NO_ORDER;

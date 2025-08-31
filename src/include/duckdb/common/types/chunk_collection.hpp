@@ -72,6 +72,41 @@ public:
 		return false;
 	}
 
+	// Parallel scan of chunks
+	bool PScan(DataChunk &out_chunk, idx_t &chunk_index) {
+		if (chunk_index >= chunks.size()) {
+			return false;
+		}
+
+		auto &chunk = *chunks[chunk_index];
+		idx_t remaining = chunk.size();
+
+		if (remaining == 0) {
+			// skip empty chunks
+			chunk_index++;
+			return PScan(out_chunk, chunk_index);
+		}
+
+		DataChunk* dc = &out_chunk;
+		if (allocated.find(dc) == allocated.end()) {
+			out_chunk.Initialize(Allocator::DefaultAllocator(), chunk.GetTypes(), STANDARD_VECTOR_SIZE);
+			allocated[dc] = true;
+		}
+
+		// Copy full chunk (parallel scanning doesn't need piecewise iteration like Scan)
+		for (idx_t col = 0; col < chunk.ColumnCount(); ++col) {
+			auto &src = chunk.data[col];
+			auto &dst = out_chunk.data[col];
+			VectorOperations::Copy(src, dst, remaining, 0, 0);
+		}
+
+		out_chunk.SetCardinality(remaining);
+
+		// Caller is responsible for increasing chunk_index by stride
+		return true;
+	}
+
+
 	idx_t Size() const {
 		return total_chunk_count;
 	}

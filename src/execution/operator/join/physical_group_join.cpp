@@ -131,6 +131,7 @@ unique_ptr<LocalSinkState> PhysicalGroupJoin::GetLocalSinkState(ExecutionContext
     return make_uniq<GroupJoinLocalSinkState>(Allocator::Get(context.client), *this, context.client);
 }
 
+static int chunkCount = 0;
 SinkResultType PhysicalGroupJoin::Sink(ExecutionContext &context, DataChunk &chunk, OperatorSinkInput &input) const {
     auto &global_state = input.global_state.Cast<GroupJoinGlobalSinkState>();
     const auto &input_types = chunk.GetTypes();
@@ -138,6 +139,10 @@ SinkResultType PhysicalGroupJoin::Sink(ExecutionContext &context, DataChunk &chu
     auto &right_types = children[1]->types;
     int left_est_card = children[0]->estimated_cardinality;
     int right_est_card = children[1]->estimated_cardinality;
+
+    chunkCount++;
+    // std::cout << ">> PhysicalGroupJoin::Sink - Processing chunk number: " << chunkCount << std::endl;
+
     if (input_types == left_types) {
         global_state.left_data.Append(chunk);
         if (global_state.left_data.Size() >= left_est_card || chunk.size() < STANDARD_VECTOR_SIZE) {
@@ -154,7 +159,8 @@ SinkResultType PhysicalGroupJoin::Sink(ExecutionContext &context, DataChunk &chu
     return SinkResultType::NEED_MORE_INPUT;
 }
 
-// // Parallel aggregation: step 1 and 2 in parallel, then combine, then store result as vector for parallel output
+// Parallel aggregation: step 1 and 2 in parallel, then combine, then store result as vector for parallel output
+// Idea:1
 // void duckdb::PhysicalGroupJoin::PerformEqualityAggregation(
     
 //     duckdb::GroupJoinGlobalSinkState &global_state, std::unordered_map<int, double>& final_results) const {
@@ -204,6 +210,10 @@ SinkResultType PhysicalGroupJoin::Sink(ExecutionContext &context, DataChunk &chu
 //     left_thread.join();
 //     right_thread.join();
 
+//     auto end = std::chrono::high_resolution_clock::now();
+//     std::chrono::duration<double> elapsed = end - start;
+//     std::cout << ">> Time taken for scanning and local aggregation: " << elapsed.count() << " seconds" << std::endl;
+//     start = std::chrono::high_resolution_clock::now();
 //     for (const auto &left_entry : left_sums) {
 //         int key = left_entry.first;
 //         double sum = left_entry.second;
@@ -213,91 +223,302 @@ SinkResultType PhysicalGroupJoin::Sink(ExecutionContext &context, DataChunk &chu
 //         }
 //     }
 
-//     auto end = std::chrono::high_resolution_clock::now();
-//     std::chrono::duration<double> elapsed = end - start;
-//     std::cout << "> Total time taken for PerformEqualityAggregation(): " << elapsed.count() << " seconds" << std::endl;
+//     end = std::chrono::high_resolution_clock::now();
+//     elapsed = end - start;
+//     std::cout << "Left Table Size:" << left_sums.size() << std::endl;
+//     std::cout << "Right Table Size:" << right_counts.size() << std::endl;
+//     std::cout << "Final Table Size:" << final_results.size() << std::endl;
+//     std::cout << ">>> Total time taken for PerformEqualityAggregation(): " << elapsed.count() << " seconds" << std::endl;
 // }
 
+
+// Idea:2 - Parallel partitioning, then parallel aggregation per partition, then merge partitions
+// works well - but still slower than single-threaded version for small datasets due to overhead
+// void duckdb::PhysicalGroupJoin::PerformEqualityAggregation(
+//     duckdb::GroupJoinGlobalSinkState &global_state, std::unordered_map<int, double>& final_results) const {
+
+//     auto start = std::chrono::high_resolution_clock::now();
+
+//     const int NUM_PARTITIONS = std::thread::hardware_concurrency();
+//     int radix_mask = NUM_PARTITIONS - 1;
+
+//     // Partitioned hash tables for left and right
+//     std::vector<std::unordered_map<int, double>> left_partitions(NUM_PARTITIONS);
+//     std::vector<std::unordered_map<int, long long int>> right_partitions(NUM_PARTITIONS);
+
+//     // Parallel partitioning of left and right tables
+//     std::thread left_thread([&]() {
+//         duckdb::DataChunk lscan_chunk;
+//         global_state.left_data.InitializeScan();
+//         while (global_state.left_data.Scan(lscan_chunk)) {
+//             for (size_t i = 0; i < lscan_chunk.size(); ++i) {
+//                 int key;
+//                 double value;
+//                 try {
+//                     key = lscan_chunk.data[0].GetValue(i).GetValue<int>();
+//                     value = lscan_chunk.data[1].GetValue(i).GetValue<double>();
+//                 } catch (const std::exception& e) {
+//                     continue;
+//                 }
+//                 size_t partition = std::hash<int>{}(key) & radix_mask;
+//                 left_partitions[partition][key] += value;
+//             }
+//         }
+//     });
+
+//     std::thread right_thread([&]() {
+//         duckdb::DataChunk rscan_chunk;
+//         global_state.right_data.InitializeScan();
+//         while (global_state.right_data.Scan(rscan_chunk)) {
+//             for (size_t i = 0; i < rscan_chunk.size(); ++i) {
+//                 int key;
+//                 try {
+//                     key = rscan_chunk.data[0].GetValue(i).GetValue<int>();
+//                 } catch (const std::exception& e) {
+//                     continue;
+//                 }
+//                 size_t partition = std::hash<int>{}(key) & radix_mask;
+//                 right_partitions[partition][key]++;
+//             }
+//         }
+//     });
+
+//     left_thread.join();
+//     right_thread.join();
+
+//     auto end = std::chrono::high_resolution_clock::now();
+//     std::chrono::duration<double> elapsed = end - start;
+//     std::cout << ">> Time taken for parallel scanning and partitioning: " << elapsed.count() << " seconds" << std::endl;
+//     start = std::chrono::high_resolution_clock::now();
+
+//     // Parallel aggregation per partition
+//     std::vector<std::unordered_map<int, double>> partition_results(NUM_PARTITIONS);
+//     std::vector<std::thread> threads;
+//     for (int p = 0; p < NUM_PARTITIONS; ++p) {
+//         threads.emplace_back([&, p]() {
+//             for (const auto &left_entry : left_partitions[p]) {
+//                 int key = left_entry.first;
+//                 double sum = left_entry.second;
+//                 long long int matching_rows = right_partitions[p].count(key) ? right_partitions[p].at(key) : 0;
+//                 if (matching_rows > 0) {
+//                     partition_results[p][key] = sum * matching_rows;
+//                 }
+//             }
+//         });
+//     }
+//     for (auto &t : threads) t.join();
+
+//     // Merge partition results
+//     for (int p = 0; p < NUM_PARTITIONS; ++p) {
+//         for (const auto &entry : partition_results[p]) {
+//             final_results[entry.first] = entry.second;
+//         }
+//     }
+
+//     end = std::chrono::high_resolution_clock::now();
+//     elapsed = end - start;
+//     std::cout << "Final Table Size:" << final_results.size() << std::endl;
+//     std::cout << "> Total time taken for PerformEqualityAggregation() with parallel partitioning: " << elapsed.count() << " seconds" << std::endl;
+// }
+
+
+// // Idea:3 - Parallel scan + thread-local aggregation, then global merge, then final join
+// // Buggy - needs fixing
+// void duckdb::PhysicalGroupJoin::PerformEqualityAggregation(
+//     duckdb::GroupJoinGlobalSinkState &global_state,
+//     std::unordered_map<int, double>& final_results) const {
+
+//     auto start = std::chrono::steady_clock::now();
+
+//     // Number of worker threads (you can tune this)
+//     const unsigned NUM_THREADS = std::thread::hardware_concurrency();
+
+//     // Thread-local maps: each thread writes into its own
+//     std::vector<std::unordered_map<int, double>> left_thread_maps(NUM_THREADS);
+//     std::vector<std::unordered_map<int, long long>> right_thread_maps(NUM_THREADS);
+
+//     // Lambda to scan a relation in parallel
+//     auto scan_relation = [&](ChunkCollection &scan_state, bool is_left, unsigned tid) {
+//         duckdb::DataChunk chunk;
+//         while (scan_state.Scan(chunk)) {
+//             for (size_t i = 0; i < chunk.size(); ++i) {
+//                 try {
+//                     int key = chunk.data[0].GetValue(i).GetValue<int>();
+//                     if (is_left) {
+//                         double val = chunk.data[1].GetValue(i).GetValue<double>();
+//                         left_thread_maps[tid][key] += val;
+//                     } else {
+//                         right_thread_maps[tid][key]++;
+//                     }
+//                 } catch (...) {
+//                     continue;
+//                 }
+//             }
+//         }
+//     };
+
+//     // Launch parallel scans
+//     std::vector<std::thread> threads;
+//     for (unsigned t = 0; t < NUM_THREADS; t++) {
+//         threads.emplace_back([&, t]() {
+//             if (t % 2 == 0) { // half threads for left, half for right
+//                 global_state.left_data.InitializeScan();
+//                 scan_relation(global_state.left_data, true, t);
+//             } else {
+//                 global_state.right_data.InitializeScan();
+//                 scan_relation(global_state.right_data, false, t);
+//             }
+//         });
+//     }
+//     for (auto &th : threads) th.join();
+
+//     auto end = std::chrono::steady_clock::now();
+//     std::cout << ">> Parallel scan + thread-local aggregation: "
+//               << std::chrono::duration<double>(end - start).count() << " sec\n";
+
+//     start = std::chrono::steady_clock::now();
+
+//     // === Global Merge Phase ===
+//     std::unordered_map<int, double> left_sums;
+//     std::unordered_map<int, long long> right_counts;
+
+//     // Merge left thread-local maps
+//     for (auto &map : left_thread_maps) {
+//         for (auto &kv : map) {
+//             left_sums[kv.first] += kv.second;
+//         }
+//     }
+//     // Merge right thread-local maps
+//     for (auto &map : right_thread_maps) {
+//         for (auto &kv : map) {
+//             right_counts[kv.first] += kv.second;
+//         }
+//     }
+
+//     // === Final join ===
+//     for (auto &kv : left_sums) {
+//         int key = kv.first;
+//         double sum = kv.second;
+//         auto it = right_counts.find(key);
+//         if (it != right_counts.end()) {
+//             final_results[key] = sum * it->second;
+//         }
+//     }
+
+//     end = std::chrono::steady_clock::now();
+//     std::cout << ">>> Merge + final join: "
+//               << std::chrono::duration<double>(end - start).count() << " sec\n";
+// }
+
+
+// Idea:4 
+// Idea:3 - Parallel scan + thread-local aggregation, then global merge, then final join
 void duckdb::PhysicalGroupJoin::PerformEqualityAggregation(
-    duckdb::GroupJoinGlobalSinkState &global_state, std::unordered_map<int, double>& final_results) const {
+    duckdb::GroupJoinGlobalSinkState &global_state,
+    std::unordered_map<int, double> &final_results) const {
 
-    auto start = std::chrono::high_resolution_clock::now();
+    auto start = std::chrono::steady_clock::now();
 
-    constexpr int NUM_PARTITIONS = 16; // You can tune this for your hardware
-    auto radix_mask = NUM_PARTITIONS - 1;
+    const unsigned NUM_THREADS = std::thread::hardware_concurrency();
+    std::cout << "Using " << NUM_THREADS << " threads for parallel aggregation" << std::endl;
+    const unsigned HALF_THREADS = NUM_THREADS / 2; // left and right equally split
 
-    // Partitioned hash tables for left and right
-    std::vector<std::unordered_map<int, double>> left_partitions(NUM_PARTITIONS);
-    std::vector<std::unordered_map<int, long long int>> right_partitions(NUM_PARTITIONS);
+    std::vector<std::unordered_map<int, double>> left_thread_maps(HALF_THREADS);
+    std::vector<std::unordered_map<int, long long>> right_thread_maps(NUM_THREADS - HALF_THREADS);
 
-    // Parallel partitioning of left and right tables
-    std::thread left_thread([&]() {
-        duckdb::DataChunk lscan_chunk;
-        global_state.left_data.InitializeScan();
-        while (global_state.left_data.Scan(lscan_chunk)) {
-            for (size_t i = 0; i < lscan_chunk.size(); ++i) {
-                int key;
-                double value;
+    // Lambda: strided parallel scan of a relation
+    auto scan_relation = [&](ChunkCollection &scan_state, bool is_left, int tid, int stride) {
+        duckdb::DataChunk chunk;
+        size_t idx = tid;
+        while (scan_state.PScan(chunk, idx)) {
+            for (size_t i = 0; i < chunk.size(); ++i) {
                 try {
-                    key = lscan_chunk.data[0].GetValue(i).GetValue<int>();
-                    value = lscan_chunk.data[1].GetValue(i).GetValue<double>();
-                } catch (const std::exception& e) {
+                    int key = chunk.data[0].GetValue(i).GetValue<int>();
+                    if (is_left) {
+                        double val = chunk.data[1].GetValue(i).GetValue<double>();
+                        left_thread_maps[tid][key] += val;
+                    } else {
+                        right_thread_maps[tid][key]++; // offset index for right
+                    }
+                } catch (...) {
                     continue;
                 }
-                size_t partition = std::hash<int>{}(key) & radix_mask;
-                left_partitions[partition][key] += value;
             }
+            idx += stride; // jump by stride to interleave scans
         }
-    });
+    };
 
-    std::thread right_thread([&]() {
-        duckdb::DataChunk rscan_chunk;
-        global_state.right_data.InitializeScan();
-        while (global_state.right_data.Scan(rscan_chunk)) {
-            for (size_t i = 0; i < rscan_chunk.size(); ++i) {
-                int key;
-                try {
-                    key = rscan_chunk.data[0].GetValue(i).GetValue<int>();
-                } catch (const std::exception& e) {
-                    continue;
-                }
-                size_t partition = std::hash<int>{}(key) & radix_mask;
-                right_partitions[partition][key]++;
-            }
-        }
-    });
+    global_state.left_data.InitializeScan();
+    global_state.right_data.InitializeScan();
 
-    left_thread.join();
-    right_thread.join();
-
-    // Parallel aggregation per partition
-    std::vector<std::unordered_map<int, double>> partition_results(NUM_PARTITIONS);
+    // Launch threads
     std::vector<std::thread> threads;
-    for (int p = 0; p < NUM_PARTITIONS; ++p) {
-        threads.emplace_back([&, p]() {
-            for (const auto &left_entry : left_partitions[p]) {
-                int key = left_entry.first;
-                double sum = left_entry.second;
-                long long int matching_rows = right_partitions[p].count(key) ? right_partitions[p].at(key) : 0;
-                if (matching_rows > 0) {
-                    partition_results[p][key] = sum * matching_rows;
-                }
+    for (unsigned t = 0; t < NUM_THREADS; t++) {
+        threads.emplace_back([&, t]() {
+            if (t < HALF_THREADS) {
+                // Left relation threads
+                scan_relation(global_state.left_data, true, t, HALF_THREADS);
+            } else {
+                // Right relation threads
+                scan_relation(global_state.right_data, false, t - HALF_THREADS, NUM_THREADS - HALF_THREADS);
             }
         });
     }
-    for (auto &t : threads) t.join();
+    for (auto &th : threads)
+        th.join();
 
-    // Merge partition results
-    for (int p = 0; p < NUM_PARTITIONS; ++p) {
-        for (const auto &entry : partition_results[p]) {
-            final_results[entry.first] = entry.second;
+    auto end = std::chrono::steady_clock::now();
+    std::cout << ">> Parallel scan + thread-local aggregation: "
+              << std::chrono::duration<double>(end - start).count() << " sec\n";
+
+    start = std::chrono::steady_clock::now();
+
+    // === Global Merge Phase ===
+    std::unordered_map<int, double> left_sums;
+    std::unordered_map<int, long long> right_counts;
+
+        // run left and right merges in parallel
+        std::thread t1([&] {
+            for (auto &map : left_thread_maps) {
+                for (auto &kv : map) {
+                    left_sums[kv.first] += kv.second;
+                }
+            }
+        });
+
+        std::thread t2([&] {
+            for (auto &map : right_thread_maps) {
+                for (auto &kv : map) {
+                    right_counts[kv.first] += kv.second;
+                }
+            }
+        });
+
+        t1.join();
+        t2.join();
+
+    // === Final join ===
+    for (auto &kv : left_sums) {
+        int key = kv.first;
+        double sum = kv.second;
+        auto it = right_counts.find(key);
+        if (it != right_counts.end()) {
+            final_results[key] = sum * it->second;
         }
     }
 
-    auto end = std::chrono::high_resolution_clock::now();
-    std::chrono::duration<double> elapsed = end - start;
-    std::cout << "> Total time taken for PerformEqualityAggregation() with parallel partitioning: " << elapsed.count() << " seconds" << std::endl;
+    end = std::chrono::steady_clock::now();
+    std::cout << "Left Table Size:" << left_sums.size() << std::endl;
+    std::cout << "Right Table Size:" << right_counts.size() << std::endl;
+    std::cout << "Final Table Size:" << final_results.size() << std::endl;
+    std::cout << ">>> Merge + final join using PScan: "
+              << std::chrono::duration<double>(end - start).count() << " sec\n";
 }
+
+
+
+
+
 
 // For parallel output, store result as vector in global_state
 void StoreResultsAsVector(GroupJoinGlobalSinkState &global_state) {
@@ -347,6 +568,9 @@ SourceResultType PhysicalGroupJoin::GetData(ExecutionContext &context, DataChunk
     auto &result_vector = global.sink_state->result_vector;
     size_t total = result_vector.size();
     if (local.my_offset >= total) {
+         auto end = std::chrono::high_resolution_clock::now();
+        std::chrono::duration<double> elapsed = end - start;
+        std::cout << ">>> Total time taken for GetData(): " << elapsed.count() << " seconds" << std::endl;
         return SourceResultType::FINISHED;
     }
     size_t rows_to_output = local.my_end - local.my_offset;
@@ -368,7 +592,7 @@ SourceResultType PhysicalGroupJoin::GetData(ExecutionContext &context, DataChunk
     if (local.my_offset >= total) {
         auto end = std::chrono::high_resolution_clock::now();
         std::chrono::duration<double> elapsed = end - start;
-        std::cout << ">> Total time taken for GetData(): " << elapsed.count() << " seconds" << std::endl;
+        std::cout << ">>> Total time taken for GetData(): " << elapsed.count() << " seconds" << std::endl;
         return SourceResultType::FINISHED;
     }
     return SourceResultType::HAVE_MORE_OUTPUT;
@@ -452,7 +676,7 @@ unique_ptr<OperatorState> PhysicalGroupJoin::GetOperatorState(ExecutionContext &
 
 OperatorResultType PhysicalGroupJoin::ExecuteInternal(ExecutionContext &context, DataChunk &input, DataChunk &chunk,
                                                       GlobalOperatorState &gstate, OperatorState &state) const {
-    // Minimal stub, adjust as needed for your logic
+  
     return OperatorResultType::NEED_MORE_INPUT;
 }
 
