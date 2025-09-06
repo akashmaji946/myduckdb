@@ -253,6 +253,7 @@ PipelineExecuteResult PipelineExecutor::Execute(idx_t max_chunks) {
 	// std::cout << ">> " <<pipeline.sink->GetName() << std::endl;
 	
 	auto &source_chunk = pipeline.operators.empty() ? final_chunk : ((pipeline.sink->GetName() == "RESULT_COLLECTOR") ? final_chunk :*intermediate_chunks[0]);
+	// auto &source_chunk = pipeline.operators.empty() ? final_chunk : *intermediate_chunks[0];
 	// if(pipeline.sink->GetName() == "RESULT_COLLECTOR"){
 	// 	source_chunk = final_chunk;
 	// }

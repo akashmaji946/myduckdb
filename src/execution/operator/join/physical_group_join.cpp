@@ -26,9 +26,11 @@ PhysicalGroupJoin::PhysicalGroupJoin(LogicalOperator &op, unique_ptr<PhysicalOpe
                                      vector<unique_ptr<Expression>> &aggregates_p)
     : PhysicalJoin(op, PhysicalOperatorType::GROUP_JOIN, join_type, estimated_cardinality),
       condition(std::move(condition_p)), groups(std::move(groups_p)), aggregates(std::move(aggregates_p)) {
+
     std::cout << "Inside PhysicalGroupJoin()" << std::endl; 
     children.push_back(std::move(left));
     children.push_back(std::move(right));
+
     D_ASSERT(join_type != JoinType::MARK);
     D_ASSERT(join_type != JoinType::SINGLE);
 }
@@ -55,6 +57,11 @@ public:
     // For parallel output
     std::vector<std::pair<int, double>> result_vector;
     ChunkCollection result_chunks;
+
+    std::chrono::high_resolution_clock::time_point sink_start;
+    std::chrono::high_resolution_clock::time_point sink_end;
+    bool sink_timing_started = false;
+    bool sink_timing_reported = false;
 
 };
 
@@ -135,7 +142,13 @@ unique_ptr<LocalSinkState> PhysicalGroupJoin::GetLocalSinkState(ExecutionContext
 
 static int chunkCount = 0;
 SinkResultType PhysicalGroupJoin::Sink(ExecutionContext &context, DataChunk &chunk, OperatorSinkInput &input) const {
+
     auto &global_state = input.global_state.Cast<GroupJoinGlobalSinkState>();
+    if (!global_state.sink_timing_started) {
+        global_state.sink_start = std::chrono::high_resolution_clock::now();
+        global_state.sink_timing_started = true;
+    }
+
     const auto &input_types = chunk.GetTypes();
     auto &left_types = children[0]->types;
     auto &right_types = children[1]->types;
@@ -157,6 +170,13 @@ SinkResultType PhysicalGroupJoin::Sink(ExecutionContext &context, DataChunk &chu
         }
     } else {
         throw InternalException("PhysicalGroupJoin::Sink: input chunk types do not match any child");
+    }
+
+    if (global_state.left_scanned && global_state.right_scanned && !global_state.sink_timing_reported) {
+        global_state.sink_end = std::chrono::high_resolution_clock::now();
+        std::chrono::duration<double> elapsed = global_state.sink_end - global_state.sink_start;
+        std::cout << ">>> Total Sink time: " << elapsed.count() << " seconds" << std::endl;
+        global_state.sink_timing_reported = true;
     }
     return SinkResultType::NEED_MORE_INPUT;
 }
@@ -422,7 +442,7 @@ void duckdb::PhysicalGroupJoin::PerformEqualityAggregation(
     auto start = std::chrono::steady_clock::now();
 
     const unsigned NUM_THREADS = std::thread::hardware_concurrency();
-    std::cout << "Using " << NUM_THREADS << " threads for parallel aggregation" << std::endl;
+    std::cout << "> Using " << NUM_THREADS << " threads for parallel aggregation" << std::endl;
     const unsigned HALF_THREADS = NUM_THREADS / 2; // left and right equally split
 
     std::vector<std::unordered_map<int, double>> left_thread_maps(HALF_THREADS);
@@ -518,6 +538,9 @@ void duckdb::PhysicalGroupJoin::PerformEqualityAggregation(
 }
 
 void StoreResultsAsChunksParallel(GroupJoinGlobalSinkState &global_state) {
+
+    auto start = std::chrono::high_resolution_clock::now();
+
     global_state.result_chunks.Reset();
     const auto &result_vector = global_state.result_vector;
     vector<LogicalType> result_types = {LogicalType::BIGINT, LogicalType::DECIMAL(38, 2)};
@@ -563,6 +586,9 @@ void StoreResultsAsChunksParallel(GroupJoinGlobalSinkState &global_state) {
     }
     std::cout << "Stored " << total_rows << " rows in result_chunks using " << num_chunks << " chunks." << std::endl;
     std::cout << "Chunks created: " << chunks_created << std::endl;
+    auto end = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<double> elapsed = end - start;
+    std::cout << ">>> Time taken for StoreResultsAsChunksParallel(): " << elapsed.count() << " seconds" << std::endl;
 }
 
 
@@ -575,6 +601,7 @@ void StoreResultsAsVector(GroupJoinGlobalSinkState &global_state) {
         global_state.result_vector.emplace_back(entry.first, entry.second);
     }
 }
+
 
 // Used for parallel GetData
 class GroupJoinGlobalSourceState : public GlobalSourceState {
@@ -698,16 +725,20 @@ static int getdatacnt = 0;
 // }
 
 SourceResultType PhysicalGroupJoin::GetData(ExecutionContext &context, DataChunk &chunk, OperatorSourceInput &input) const {
+
+    static auto start = std::chrono::high_resolution_clock::now();
     auto &global = input.global_state.Cast<GroupJoinGlobalSourceState>();
     auto &local = input.local_state.Cast<GroupJoinLocalSourceState>();
     auto &result_chunks = global.sink_state->result_chunks;
     size_t total_chunks = result_chunks.NumChunks();
 
+    getdatacnt++;
+
     if (local.my_offset >= total_chunks) {
             // chunk types
             auto v = chunk.GetTypes();
             for(auto &t : v) {
-                std::cout << t.ToString() << "**";
+                std::cout << t.ToString() << "***";
             }   
             std::cout << std::endl;
         return SourceResultType::FINISHED;
@@ -724,12 +755,18 @@ SourceResultType PhysicalGroupJoin::GetData(ExecutionContext &context, DataChunk
             std::cout << t.ToString() << "**";
         }   
         std::cout << std::endl;
+
+        auto end = std::chrono::high_resolution_clock::now();
+        std::chrono::duration<double> elapsed = end - start;
+        std::cout << ">>> Total time taken for GetData(): " << elapsed.count() << " seconds" << std::endl;
+        std::cout << ">> Total chunks processed in GetData(): " << getdatacnt << std::endl;
         return SourceResultType::FINISHED;
     }
     return SourceResultType::HAVE_MORE_OUTPUT;
 }
 
 SinkFinalizeType PhysicalGroupJoin::Finalize(Pipeline &pipeline, Event &event, ClientContext &context, OperatorSinkFinalizeInput &input) const {
+
     auto &global_state = input.global_state.Cast<GroupJoinGlobalSinkState>();
     if (!global_state.left_scanned || !global_state.right_scanned) {
         return SinkFinalizeType::NO_OUTPUT_POSSIBLE;
@@ -739,8 +776,10 @@ SinkFinalizeType PhysicalGroupJoin::Finalize(Pipeline &pipeline, Event &event, C
     }
     global_state.finalized = true;
     final_results.clear();
+
     PerformEqualityAggregation(global_state, final_results);
     StoreResultsAsVector(global_state);
+
     // StoreResultsAsChunksParallel(global_state);
     std::cout << "Final result size: " << global_state.result_vector.size() << std::endl;
 
@@ -748,6 +787,7 @@ SinkFinalizeType PhysicalGroupJoin::Finalize(Pipeline &pipeline, Event &event, C
     std::cout << "Final result chunk size: " << global_state.result_chunks.NumChunks() << std::endl;
 
     return SinkFinalizeType::READY;
+
 }
 
 InsertionOrderPreservingMap<string> PhysicalGroupJoin::ParamsToString() const {
@@ -778,6 +818,7 @@ InsertionOrderPreservingMap<string> PhysicalGroupJoin::ParamsToString() const {
     result["Aggregates"] = aggregate_info;
     return result;
 }
+
 
 class GroupJoinOperatorState : public OperatorState {
 public:
@@ -811,9 +852,11 @@ unique_ptr<OperatorState> PhysicalGroupJoin::GetOperatorState(ExecutionContext &
     return std::move(state);
 }
 
+static int execCnt = 0;
 OperatorResultType PhysicalGroupJoin::ExecuteInternal(ExecutionContext &context, DataChunk &input, DataChunk &chunk,
                                                       GlobalOperatorState &gstate, OperatorState &state) const {
-  
+    execCnt++;                                             
+    std::cout << "Inside ExecuteInternal(): " << execCnt << std::endl;
     return OperatorResultType::NEED_MORE_INPUT;
 }
 

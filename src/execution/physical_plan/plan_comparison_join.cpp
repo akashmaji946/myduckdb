@@ -213,9 +213,9 @@ unique_ptr<PhysicalOperator> PhysicalPlanGenerator::PlanComparisonJoin(LogicalCo
 
 	unique_ptr<PhysicalOperator> plan;
 
-	plan = make_uniq<PhysicalNestedLoopJoin>(op, std::move(left), std::move(right), std::move(op.conditions),
-			                                         op.join_type, op.estimated_cardinality);
-	return plan;
+	// plan = make_uniq<PhysicalNestedLoopJoin>(op, std::move(left), std::move(right), std::move(op.conditions),
+	// 		                                         op.join_type, op.estimated_cardinality);
+	// return plan;
 
     if(can_do_physical_amus_join(client_config, op, left, right)){
 		plan  = make_uniq<PhysicalAmUsJoin>(op, std::move(left), std::move(right), std::move(op.conditions),
